@@ -11,7 +11,6 @@ import Menu from "@mui/material/Menu";
 import Toolbar from "@mui/material/Toolbar";
 
 import MDBox from "components/ui/MDBox";
-import MDInput from "components/ui/MDInput";
 
 import Breadcrumbs from "components/Breadcrumbs";
 import NotificationItem from "components/Items/NotificationItem";
@@ -105,7 +104,6 @@ function DashboardNavbar({ absolute, light, isMini }) {
         {isMini ? null : (
           <MDBox sx={(theme) => navbarRow(theme, { isMini })}>
             <MDBox pr={1}>
-              <MDInput label="Search here" />
             </MDBox>
             <MDBox color={light ? "white" : "inherit"}>
               <AuthNav />

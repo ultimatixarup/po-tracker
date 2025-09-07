@@ -1,6 +1,14 @@
 // src/layouts/susbsystems/index.js
 import { Add } from "@mui/icons-material";
-import { Button, Stack, TextField } from "@mui/material";
+import {
+  Button,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
+} from "@mui/material";
 import Card from "@mui/material/Card";
 import MDBox from "components/ui/MDBox";
 import MDTypography from "components/ui/MDTypography";
@@ -66,19 +74,83 @@ const AddNewButton = () => {
   );
 };
 
+/* ---------------- Toolbar *inside* the table ---------------- */
+const FilterToolbar = ({
+  filterText,
+  setFilterText,
+  sortBy,
+  setSortBy,
+  sortDir,
+  setSortDir,
+  sortableColumns,
+  columnsDef,
+  showColFilters,
+  toggleColFilters,
+  clearAll,
+}) => {
+  return (
+    <Stack
+      direction={{ xs: "column", md: "row" }}
+      spacing={1}
+      sx={{ p: 1, alignItems: "center", width: "100%", maxWidth: 900 }}
+    >
+      <TextField
+        label="Global Filter"
+        placeholder="Type to filter all columns…"
+        size="small"
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
+        sx={{ minWidth: 220, flex: 1 }}
+      />
+      <FormControl size="small" sx={{ minWidth: 160 }}>
+        <InputLabel id="sort-by-label">Sort By</InputLabel>
+        <Select
+          labelId="sort-by-label"
+          label="Sort By"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+        >
+          <MenuItem value="">
+            <em>(none)</em>
+          </MenuItem>
+          {sortableColumns.map((col) => (
+            <MenuItem key={col} value={col}>
+              {columnsDef.find((c) => c.name === col)?.label || col}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl size="small" sx={{ minWidth: 120 }}>
+        <InputLabel id="sort-dir-label">Direction</InputLabel>
+        <Select
+          labelId="sort-dir-label"
+          label="Direction"
+          value={sortDir}
+          onChange={(e) => setSortDir(e.target.value)}
+          disabled={!sortBy}
+        >
+          <MenuItem value="asc">Asc</MenuItem>
+          <MenuItem value="desc">Desc</MenuItem>
+        </Select>
+      </FormControl>
+      <Button variant="outlined" size="small" onClick={clearAll}>
+        Clear
+      </Button>
+      <Button variant="text" size="small" onClick={toggleColFilters}>
+        {showColFilters ? "Hide Column Filters" : "Show Column Filters"}
+      </Button>
+    </Stack>
+  );
+};
+
 /* ---------------- Table ---------------- */
 const SubsystemsTable = () => {
   const rowsPerPage = 10;
   const [pageIndex, setPageIndex] = useState(0);
 
   const { setIsLoading } = useContext(LoaderContext);
-  const {
-    getAllSubsystems,
-    subsystems,
-    createSubsystem,
-    updateSubsystem,
-    deleteSubsystem,
-  } = useAppStore((state) => state);
+  const { getAllSubsystems, subsystems, createSubsystem, updateSubsystem, deleteSubsystem } =
+    useAppStore((state) => state);
 
   // initial fetch
   useEffect(() => {
@@ -98,7 +170,7 @@ const SubsystemsTable = () => {
     setIsLoading(false);
   };
 
-  /* --------- Columns definition (used for building editable cells) --------- */
+  /* --------- Columns definition --------- */
   const columnsDef = useMemo(
     () => [
       { name: "id", label: "ID", align: "center", editable: false },
@@ -191,17 +263,30 @@ const SubsystemsTable = () => {
         POMonthlyBillRate: row?.POMonthlyBillRate,
       }));
     }
-    // server empty? show baseline stubs
     return baselineStubRows;
   }, [serverRows, baselineStubRows]);
 
-  // local buffer for NEW rows (so they appear before server save)
-  const [newRows, setNewRows] = useState([]);
+  // local buffers & overlays
+  const [newRows, setNewRows] = useState([]);     // rows created locally (incl. saved)
+  const [overrides, setOverrides] = useState({}); // id -> updated fields (optimistic updates)
 
+  // Merge newRows first, then baseRows, and dedupe by id
   const rows = useMemo(() => {
-    // show NEW rows first
-    return [...newRows, ...baseRows];
+    const seen = new Set();
+    const combined = [...newRows, ...baseRows].filter((r) => {
+      if (!r || !r.id) return false;
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+    return combined;
   }, [newRows, baseRows]);
+
+  // Apply optimistic overrides so changes persist visually
+  const effectiveRows = useMemo(
+    () => rows.map((r) => (overrides[r.id] ? { ...r, ...overrides[r.id] } : r)),
+    [rows, overrides]
+  );
 
   /* --------- Inline edit state --------- */
   const [editingId, setEditingId] = useState(null);
@@ -266,28 +351,28 @@ const SubsystemsTable = () => {
     setDraft((d) => ({ ...(d || {}), [field]: value }));
   }, []);
 
-  const { totalCount: serverTotalCount } = subsystems || {};
-
   const saveInline = useCallback(async () => {
     if (!draft) return;
     setIsLoading(true);
     try {
       if (String(draft.id).startsWith("NEW-")) {
+        // CREATE: optimistic keep
+        let created;
         if (typeof createSubsystem === "function") {
-          await createSubsystem(draft);
-        } else {
-          // eslint-disable-next-line no-console
-          console.log("createSubsystem not wired; payload:", draft);
+          created = await createSubsystem(draft); // may return created row/id
         }
-        setNewRows((prev) => prev.filter((r) => r.id !== draft.id));
+        const returnedId = created?.id ?? created?.Id ?? created?.ID;
+        const normalized = returnedId ? { ...draft, ...created, id: returnedId } : { ...draft };
+        setNewRows((prev) => prev.map((r) => (r.id === draft.id ? normalized : r)));
       } else {
+        // UPDATE: optimistic overlay
         if (typeof updateSubsystem === "function") {
           await updateSubsystem(draft.id, draft);
-        } else {
-          // eslint-disable-next-line no-console
-          console.log("updateSubsystem not wired; payload:", draft);
         }
+        setOverrides((prev) => ({ ...prev, [draft.id]: { ...draft } }));
       }
+
+      // reconcile in background (dedupe prevents doubles)
       await getAllSubsystems(rowsPerPage, pageIndex * rowsPerPage);
       setEditingId(null);
       setDraft(null);
@@ -308,24 +393,32 @@ const SubsystemsTable = () => {
     async (row) => {
       const rowId = row?.id;
       if (!rowId) return;
-      // if it's a local NEW row, just drop it
+
+      // remove from local buffers first
+      setNewRows((prev) => prev.filter((r) => r.id !== rowId));
+      setOverrides((prev) => {
+        if (!prev[rowId]) return prev;
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
+
+      // if it's a temp NEW row, we're done
       if (String(rowId).startsWith("NEW-")) {
-        setNewRows((prev) => prev.filter((r) => r.id !== rowId));
         if (editingId === rowId) {
           setEditingId(null);
           setDraft(null);
         }
         return;
       }
+
       const ok = window.confirm("Delete this record?");
       if (!ok) return;
+
       setIsLoading(true);
       try {
         if (typeof deleteSubsystem === "function") {
           await deleteSubsystem(rowId);
-        } else {
-          // eslint-disable-next-line no-console
-          console.log("deleteSubsystem not wired; id:", rowId);
         }
         await getAllSubsystems(rowsPerPage, pageIndex * rowsPerPage);
       } finally {
@@ -335,16 +428,84 @@ const SubsystemsTable = () => {
     [deleteSubsystem, editingId, getAllSubsystems, pageIndex, rowsPerPage, setIsLoading]
   );
 
-  /* --------- Build display rows: inject editors & actions directly as cell values --------- */
+  /* =========================
+     FILTER + SORT (client-side)
+     ========================= */
+  const [filterText, setFilterText] = useState("");
+  const [sortBy, setSortBy] = useState(""); // column name
+  const [sortDir, setSortDir] = useState("asc"); // 'asc' | 'desc'
+  const [showColFilters, setShowColFilters] = useState(true); // <— defined ONCE here
+  const [columnFilters, setColumnFilters] = useState({}); // { [colName]: string }
+
+  const searchableColumns = useMemo(
+    () => columnsDef.filter((c) => c.name !== "__actions").map((c) => c.name),
+    [columnsDef]
+  );
+  const sortableColumns = searchableColumns;
+
+  const normalize = (v) => {
+    if (v == null) return "";
+    if (typeof v === "number") return v.toString();
+    if (typeof v === "string") return v.trim();
+    return String(v ?? "");
+  };
+  const isDateString = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+  const getSortValue = (row, col) => {
+    const raw = normalize(row[col]);
+    if (raw === "") return "";
+    const num = Number(raw);
+    if (!Number.isNaN(num) && raw !== "") return num;
+    if (isDateString(raw)) return new Date(raw).getTime();
+    return raw.toLowerCase();
+  };
+
+  // Apply global filter
+  const globallyFiltered = useMemo(() => {
+    const q = filterText.trim().toLowerCase();
+    if (!q) return effectiveRows;
+    return effectiveRows.filter((r) =>
+      searchableColumns.some((col) => normalize(r[col]).toLowerCase().includes(q))
+    );
+  }, [effectiveRows, filterText, searchableColumns]);
+
+  // Apply per-column filters
+  const columnFiltered = useMemo(() => {
+    const activeCols = Object.keys(columnFilters).filter(
+      (c) => (columnFilters[c] || "").trim() !== ""
+    );
+    if (activeCols.length === 0) return globallyFiltered;
+    return globallyFiltered.filter((r) =>
+      activeCols.every((c) =>
+        normalize(r[c]).toLowerCase().includes(columnFilters[c].trim().toLowerCase())
+      )
+    );
+  }, [globallyFiltered, columnFilters]);
+
+  // Sort
+  const sortedRows = useMemo(() => {
+    if (!sortBy) return columnFiltered;
+    const dir = sortDir === "desc" ? -1 : 1;
+    const arr = [...columnFiltered];
+    arr.sort((a, b) => {
+      const av = getSortValue(a, sortBy);
+      const bv = getSortValue(b, sortBy);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+    return arr;
+  }, [columnFiltered, sortBy, sortDir]);
+
+  /* --------- Build display rows: inject editors & actions as cell values --------- */
   const typeFor = (name) =>
     /Rate|Amount|ManWks/i.test(name) ? "number" : /Start|End|Date/i.test(name) ? "date" : "text";
 
   const displayRows = useMemo(() => {
-    return rows.map((r) => {
+    return sortedRows.map((r) => {
       const isEditing = editingId === r.id;
       const out = { ...r };
 
-      // turn editable fields into <TextField> when the row is being edited
       if (isEditing && draft) {
         columnsDef.forEach((c) => {
           if (c.editable && c.name !== "__actions") {
@@ -366,13 +527,12 @@ const SubsystemsTable = () => {
         });
       }
 
-      // actions column as plain Buttons
       out.__actions = isEditing ? (
         <Stack direction="row" spacing={1} justifyContent="center">
-          <Button size="small" variant="contained" color="success" onClick={saveInline}>
+          <Button size="small" variant="contained" onClick={saveInline}>
             Save
           </Button>
-          <Button size="small" variant="outlined" color="warning" onClick={cancelInline}>
+          <Button size="small" variant="outlined" onClick={cancelInline}>
             Cancel
           </Button>
         </Stack>
@@ -389,28 +549,121 @@ const SubsystemsTable = () => {
 
       return out;
     });
-  }, [rows, editingId, draft, columnsDef, updateDraft, saveInline, cancelInline, handleDelete, startInlineEdit]);
+  }, [
+    sortedRows,
+    editingId,
+    draft,
+    columnsDef,
+    updateDraft,
+    saveInline,
+    cancelInline,
+    handleDelete,
+    startInlineEdit,
+  ]);
 
-  // Keep totalCount in sync with what we display so the grid actually renders rows.
+  // Keep totalCount in sync with what we display
   const displayTotal = useMemo(() => {
-    return typeof serverTotalCount === "number" && serverTotalCount > 0
-      ? serverTotalCount
-      : displayRows.length;
-  }, [serverTotalCount, displayRows.length]);
+    const tc = subsystems?.totalCount;
+    return typeof tc === "number" && tc > 0 ? tc : displayRows.length;
+  }, [subsystems?.totalCount, displayRows.length]);
 
-  // Columns for MuiTable (no custom renderers needed now)
+  // Columns for MuiTable
   const columns = useMemo(
-    () => columnsDef.map(({ name, label, align }) => ({ name, label, align })),
+    () =>
+      columnsDef.map(({ name, label, align }) => ({
+        name,
+        label,
+        align,
+        options: { filter: name !== "__actions", sort: true },
+      })),
     [columnsDef]
   );
 
+  // Toolbar node injected into table toolbar — reuses the ONE showColFilters state
+  const toolbarNode = useMemo(
+    () => (
+      <FilterToolbar
+        filterText={filterText}
+        setFilterText={setFilterText}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        sortDir={sortDir}
+        setSortDir={setSortDir}
+        sortableColumns={sortableColumns}
+        columnsDef={columnsDef}
+        showColFilters={showColFilters}
+        toggleColFilters={() => setShowColFilters((s) => !s)}
+        clearAll={() => {
+          setFilterText("");
+          setSortBy("");
+          setSortDir("asc");
+          setColumnFilters({});
+        }}
+      />
+    ),
+    [
+      filterText,
+      sortBy,
+      sortDir,
+      sortableColumns,
+      columnsDef,
+      showColFilters,
+      setShowColFilters,
+    ]
+  );
+
+  // Column filter inputs (rendered above table)
+  const columnFilterInputs = useMemo(() => {
+    if (!showColFilters) return null;
+    return (
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        flexWrap="wrap"
+        sx={{ px: 2, pb: 1 }}
+      >
+        {columnsDef
+          .filter((c) => c.name !== "__actions")
+          .map((c) => (
+            <TextField
+              key={c.name}
+              size="small"
+              label={c.label}
+              placeholder={`Filter ${c.label}`}
+              value={columnFilters[c.name] || ""}
+              onChange={(e) =>
+                setColumnFilters((prev) => ({ ...prev, [c.name]: e.target.value }))
+              }
+              sx={{ minWidth: 160, flex: "1 1 160px" }}
+            />
+          ))}
+      </Stack>
+    );
+  }, [columnsDef, columnFilters, showColFilters]);
+
   return (
-    <MuiTable
-      data={displayRows}
-      columns={columns}
-      totalCount={displayTotal}
-      options={{ rowsPerPage }}
-      onPageChange={(args) => handlePageChange(args)}
-    />
+    <>
+      {columnFilterInputs}
+
+      <MuiTable
+        data={displayRows}
+        columns={columns}
+        totalCount={displayTotal}
+        options={{
+          rowsPerPage,
+          search: true,
+          filter: true,
+          viewColumns: true,
+          print: false,
+          download: false,
+          filterType: "textField",
+          searchText: filterText,
+          onSearchChange: (text) => setFilterText(typeof text === "string" ? text : ""),
+          customToolbar: () => toolbarNode,
+        }}
+        onPageChange={(args) => handlePageChange(args)}
+      />
+    </>
   );
 };
