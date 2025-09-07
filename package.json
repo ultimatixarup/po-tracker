@@ -5,12 +5,12 @@
   "dependencies": {
     "@auth0/auth0-react": "^1.12.1",
     "@emotion/cache": "11.10.8",
-    "@emotion/react": "11.10.8",
-    "@emotion/styled": "11.10.8",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@hookform/resolvers": "^3.3.4",
-    "@mui/icons-material": "5.11.16",
-    "@mui/material": "5.12.3",
-    "@mui/x-data-grid": "^8.11.1",
+    "@mui/icons-material": "^5.18.0",
+    "@mui/material": "^5.18.0",
+    "@mui/x-data-grid": "^6.20.4",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
@@ -23,6 +23,7 @@
     "chroma-js": "2.4.2",
     "http-proxy-middleware": "^2.0.6",
     "moment": "^2.30.1",
+    "npm": "^11.6.0",
     "prop-types": "15.8.1",
     "react": "18.2.0",
     "react-chartjs-2": "5.2.0",
@@ -32,6 +33,7 @@
     "react-router-dom": "^6.22.2",
     "react-scripts": "5.0.1",
     "react-table": "7.8.0",
+    "start": "^5.1.0",
     "stylis": "4.1.4",
     "stylis-plugin-rtl": "2.1.1",
     "typescript": "^4.9.5",
@@ -66,13 +68,13 @@
   },
   "devDependencies": {
     "eslint": "8.39.0",
-    "eslint-config-prettier": "8.8.0",
+    "eslint-config-prettier": "^8.10.2",
     "eslint-plugin-import": "2.27.5",
     "eslint-plugin-jsx-a11y": "6.7.1",
-    "eslint-plugin-prettier": "4.2.1",
+    "eslint-plugin-prettier": "^4.2.5",
     "eslint-plugin-react": "7.32.2",
-    "eslint-plugin-react-hooks": "4.6.0",
-    "prettier": "2.8.8"
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "prettier": "^2.8.8"
   },
   "overrides": {
     "svgo": "3.0.2"
