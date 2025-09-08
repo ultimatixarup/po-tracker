@@ -10,51 +10,60 @@ export interface SubsystemSliceState {
 export const susbsytemSlice: StateCreator<SubsystemSliceState> = (set, get) => ({
   subsystems: null,
   subsystemSearchQuery: null,
+
   setSubsystemSearchQuery: (params?: any) => {
     set({ subsystemSearchQuery: params });
   },
+  
   getAllSubsystems: async (perPage?: number, offset?: number) => {
     const state = get();
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    const now = new Date();
+    const wkEnd = new Date(now);
+    wkEnd.setDate(now.getDate() + 6);
+    const projEnd = new Date(now);
+    projEnd.setMonth(now.getMonth() + 3);
+
     const DATA = [
       {
-        id: 1,
-        WBS: "WBS",
-        PCM: "PCM",
-        PL: "PL",
-        GL: "GL",
-        projectName: "projectName",
-        projectStart: "projectStart",
-        WkStart: "wkStart",
-        ProjectEnd: "projectEnd",
-        WkEnd: "wkEnd",
-        PRNumber: "prNumber",
-        PRStatus: "prStatus",
-        PO: "po",
-        POManWks: "poManWks",
-        PRAmount: "po",
-        PRWklyRate: "po",
-        POMonthlyBillRate: "po",
-        action: "action",
+        id: `NEW-${Date.now()}`,
+        PMS: "PMS-001",
+        WBS: "WBS-000X",
+        PCM: "PCM-001",
+        PL: "PL-01",
+        GL: "GL-01",
+        FOProjectName: "New Project",
+        POProjectStart: ymd(now),
+        WkStart: ymd(now),
+        ProjectEnd: ymd(projEnd),
+        WkEnd: ymd(wkEnd),
+        PRNumber: "PR-100X",
+        PRStatus: "OPEN",
+        PO: "PO-200X",
+        POManWks: 4,
+        PRAmount: 5000,
+        PRWklyRate: 1250,
+        POMonthlyBillRate: 20000,
       },
       {
-        id: 2,
-        WBS: "WBS",
-        PCM: "PCM",
-        PL: "PL",
-        GL: "GL",
-        projectName: "projectName",
-        projectStart: "projectStart",
-        WkStart: "wkStart",
-        ProjectEnd: "projectEnd",
-        WkEnd: "wkEnd",
-        PRNumber: "prNumber",
-        PRStatus: "prStatus",
-        PO: "po",
-        POManWks: "poManWks",
-        PRAmount: "po",
-        PRWklyRate: "po",
-        POMonthlyBillRate: "po",
-        action: "action",
+        id: `NEW-${Date.now()}`,
+        PMS: "PMS-001",
+        WBS: "WBS-000X",
+        PCM: "PCM-001",
+        PL: "PL-01",
+        GL: "GL-01",
+        FOProjectName: "New Project",
+        POProjectStart: ymd(now),
+        WkStart: ymd(now),
+        ProjectEnd: ymd(projEnd),
+        WkEnd: ymd(wkEnd),
+        PRNumber: "PR-100X",
+        PRStatus: "OPEN",
+        PO: "PO-200X",
+        POManWks: 4,
+        PRAmount: 5000,
+        PRWklyRate: 1250,
+        POMonthlyBillRate: 20000,
       },
     ];
     set({ subsystems: { subsystems: DATA } });
