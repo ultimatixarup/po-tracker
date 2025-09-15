@@ -6,15 +6,18 @@
     "ag-grid-community": "34.1.2",
     "ag-grid-enterprise": "34.1.2",
     "ag-grid-react": "34.1.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "morgan": "^1.10.1",
+    "pouchdb": "^9.0.0",
     "react": "18",
     "react-dom": "18"
   },
   "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "preview": "vite preview"
-},
-
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "devDependencies": {
     "@types/node": "^22",
     "@vitejs/plugin-react": "^4.7.0",

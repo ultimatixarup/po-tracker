@@ -1,4 +1,4 @@
-// server.js (Node 16 compatible, CommonJS)
+// server.js (Node 16 compatible)
 
 const express = require("express");
 const cors = require("cors");
@@ -20,10 +20,9 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use(morgan("dev"));
 
-// Simple id generator (base62-ish) – avoids ESM-only nanoid
+// Simple ID generator (base62-ish) – avoids ESM-only nanoid
 function genId(size) {
   size = size || 21;
-  // 62-char alphabet
   const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
   const bytes = crypto.randomBytes(size);
   let out = "";
@@ -35,19 +34,20 @@ function httpError(res, status, message, details) {
   return res.status(status).json({ error: message, details: details || undefined });
 }
 
+// ---- Routes ----
+
+// Health check
 app.get("/health", function (_req, res) {
   res.json({ ok: true, db: DB_NAME });
 });
 
-// ---- CRUD ----
-
 // Create
 app.post("/items", async function (req, res) {
   try {
-    var doc = req.body || {};
+    const doc = req.body || {};
     if (!doc._id) doc._id = genId();
-    var putRes = await db.put(doc);
-    var saved = await db.get(putRes.id);
+    const putRes = await db.put(doc);
+    const saved = await db.get(putRes.id);
     res.status(201).json(saved);
   } catch (err) {
     if (err && err.status === 409) return httpError(res, 409, "Document with this _id already exists", err);
@@ -58,7 +58,7 @@ app.post("/items", async function (req, res) {
 // Read one
 app.get("/items/:id", async function (req, res) {
   try {
-    var doc = await db.get(req.params.id);
+    const doc = await db.get(req.params.id);
     res.json(doc);
   } catch (err) {
     if (err && err.status === 404) return httpError(res, 404, "Not found", err);
@@ -69,11 +69,11 @@ app.get("/items/:id", async function (req, res) {
 // Replace (full update) – requires _rev
 app.put("/items/:id", async function (req, res) {
   try {
-    var incoming = req.body || {};
+    const incoming = req.body || {};
     if (!incoming._rev) return httpError(res, 409, "Missing _rev for update (optimistic concurrency)");
     incoming._id = req.params.id;
-    var putRes = await db.put(incoming);
-    var saved = await db.get(putRes.id);
+    const putRes = await db.put(incoming);
+    const saved = await db.get(putRes.id);
     res.json(saved);
   } catch (err) {
     if (err && err.status === 409) return httpError(res, 409, "Conflict: stale _rev", err);
@@ -85,10 +85,10 @@ app.put("/items/:id", async function (req, res) {
 // Patch (partial update)
 app.patch("/items/:id", async function (req, res) {
   try {
-    var current = await db.get(req.params.id);
-    var merged = Object.assign({}, current, req.body, { _id: current._id, _rev: current._rev });
-    var putRes = await db.put(merged);
-    var saved = await db.get(putRes.id);
+    const current = await db.get(req.params.id);
+    const merged = Object.assign({}, current, req.body, { _id: current._id, _rev: current._rev });
+    const putRes = await db.put(merged);
+    const saved = await db.get(putRes.id);
     res.json(saved);
   } catch (err) {
     if (err && err.status === 404) return httpError(res, 404, "Not found", err);
@@ -97,12 +97,12 @@ app.patch("/items/:id", async function (req, res) {
   }
 });
 
-// Delete – requires latest _rev (accepts ?rev= or body._rev)
+// Delete – requires latest _rev (?rev= or body._rev)
 app.delete("/items/:id", async function (req, res) {
   try {
-    var rev = (req.query && req.query.rev) || (req.body && req.body._rev);
+    const rev = (req.query && req.query.rev) || (req.body && req.body._rev);
     if (!rev) return httpError(res, 409, "Missing _rev for delete");
-    var delRes = await db.remove(req.params.id, rev);
+    const delRes = await db.remove(req.params.id, rev);
     res.json({ ok: true, id: delRes.id, rev: delRes.rev });
   } catch (err) {
     if (err && err.status === 404) return httpError(res, 404, "Not found", err);
@@ -111,12 +111,12 @@ app.delete("/items/:id", async function (req, res) {
   }
 });
 
-// List (basic pagination)
+// List (with pagination)
 app.get("/items", async function (req, res) {
   try {
-    var limit = Math.min(parseInt(req.query && req.query.limit ? req.query.limit : "25", 10), 200);
-    var skip = parseInt(req.query && req.query.skip ? req.query.skip : "0", 10);
-    var result = await db.allDocs({ include_docs: true, limit: limit, skip: skip });
+    const limit = Math.min(parseInt((req.query && req.query.limit) || "25", 10), 200);
+    const skip = parseInt((req.query && req.query.skip) || "0", 10);
+    const result = await db.allDocs({ include_docs: true, limit: limit, skip: skip });
     res.json({
       total: result.total_rows,
       offset: result.offset,
@@ -130,12 +130,12 @@ app.get("/items", async function (req, res) {
 // Mango query
 app.post("/items/_find", async function (req, res) {
   try {
-    var payload = req.body || {};
-    var selector = payload.selector || {};
-    var limit = payload.limit || 25;
-    var skip = payload.skip || 0;
-    var sort = payload.sort;
-    var result = await db.find({ selector: selector, limit: limit, skip: skip, sort: sort });
+    const payload = req.body || {};
+    const selector = payload.selector || {};
+    const limit = payload.limit || 25;
+    const skip = payload.skip || 0;
+    const sort = payload.sort;
+    const result = await db.find({ selector: selector, limit: limit, skip: skip, sort: sort });
     res.json(result.docs);
   } catch (err) {
     return httpError(res, 400, "Query failed", err);
@@ -145,16 +145,16 @@ app.post("/items/_find", async function (req, res) {
 // Bulk insert/update
 app.post("/items/_bulk", async function (req, res) {
   try {
-    var docs = Array.isArray(req.body) ? req.body : [];
-    var mapped = docs.map(function (d) { return Object.assign({ _id: d._id || genId() }, d); });
-    var resp = await db.bulkDocs(mapped);
+    const docs = Array.isArray(req.body) ? req.body : [];
+    const mapped = docs.map(function (d) { return Object.assign({ _id: d._id || genId() }, d); });
+    const resp = await db.bulkDocs(mapped);
     res.json(resp);
   } catch (err) {
     return httpError(res, 400, "Bulk operation failed", err);
   }
 });
 
-// Optional: create indexes at startup (no top-level await)
+// ---- Init ----
 (function createIndexes() {
   db.createIndex({ index: { fields: ["type"] } })
     .then(function () { return db.createIndex({ index: { fields: ["role"] } }); })
@@ -165,4 +165,9 @@ app.post("/items/_bulk", async function (req, res) {
 // Global error guard
 app.use(function (err, _req, res, _next) {
   console.error(err);
-  return httpError(res, 500, "Unexpected server error", (err && err.message) || St
+  return httpError(res, 500, "Unexpected server error", (err && err.message) || String(err));
+});
+
+app.listen(PORT, function () {
+  console.log("PouchDB REST API listening on http://localhost:" + PORT + " (db: " + DB_NAME + ")");
+});
