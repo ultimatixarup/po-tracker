@@ -1,19 +1,19 @@
 "use client";
 
 import React, {
-  StrictMode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    StrictMode,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
-  AllCommunityModule,
-  ModuleRegistry,
-  themeQuartz,
+    AllCommunityModule,
+    ModuleRegistry,
+    themeQuartz,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 
@@ -34,13 +34,6 @@ const myTheme = themeQuartz.withParams({
   headerBackgroundColor: "rgb(228, 237, 250)",
   rowHoverColor: "rgb(216, 226, 255)",
 });
-
-/** ====== HELPERS ====== */
-const pad2 = (n) => String(n).padStart(2, "0");
-const dateToMDY = (d, sep = "/") =>
-  d instanceof Date && !isNaN(d)
-    ? `${pad2(d.getMonth() + 1)}${sep}${pad2(d.getDate())}${sep}${d.getFullYear()}`
-    : "";
 
 /** ====== MAIN ====== */
 const GridExample = () => {
@@ -102,16 +95,15 @@ const GridExample = () => {
       cellEditorParams: { values: ["OPEN", "CLOSED"] },
       width: 160,
     },
-    // add more columns here if needed...
     {
       headerName: "Actions",
       field: "__actions",
       pinned: "right",
-      width: 100,       // room for two tiny buttons
+      width: 100,
       filter: false,
       sortable: false,
       editable: false,
-      cellClass: "actions-cell", // center content
+      cellClass: "actions-cell",
       cellRenderer: (p) => {
         const doGetDoc = async (id) => {
           const g = await fetch(`${API_BASE}/items/${encodeURIComponent(id)}`);
@@ -189,7 +181,7 @@ const GridExample = () => {
       sortable: true,
       resizable: true,
       floatingFilter: true,
-      minWidth: 160, // wider default so editors have room
+      minWidth: 160,
     }),
     []
   );
@@ -256,7 +248,6 @@ const GridExample = () => {
           cursor: pointer;
         }
 
-        /* Tiny icon buttons */
         .actions-wrap {
           display: inline-flex;
           align-items: center;
@@ -277,69 +268,57 @@ const GridExample = () => {
           line-height: 1;
           font-size: 12px;
           cursor: pointer;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.06);
         }
-        .icon-btn:hover { box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
-        .icon-btn-danger { color: #b3261e; border-color: #f0c9c7; }
-        .icon-btn-danger:hover { background: #ffecec; }
-        .icon-btn-neutral { color: #0b254b; border-color: #d3dbe7; }
-        .icon-btn-neutral:hover { background: #edf3ff; }
+        .icon-btn-danger { color: #b3261e; }
+        .icon-btn-neutral { color: #0b254b; }
 
-        /* Center action icons in their cell */
         .actions-cell {
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        /* ========= INLINE EDITOR: fill entire cell ========= */
-
-        /* 1) Remove padding so the editor can use the full cell box */
+        /* Inline editors styled like Quartz floating filter boxes */
         .ag-theme-quartz .ag-cell.ag-cell-inline-editing {
-          padding: 0 !important;
-          overflow: visible; /* avoid clipping focus ring */
+          padding: 2px !important;
+          overflow: visible;
         }
-
-        /* 2) Make the editor containers fill the cell */
         .ag-theme-quartz .ag-cell-inline-editing .ag-cell-editor,
         .ag-theme-quartz .ag-cell-inline-editing .ag-text-field,
         .ag-theme-quartz .ag-cell-inline-editing .ag-input-field,
         .ag-theme-quartz .ag-cell-inline-editing .ag-input-wrapper {
           width: 100% !important;
-          height: 100% !important;
+          height: auto !important;
           display: flex;
           align-items: stretch;
         }
-
-        /* 3) Stretch the actual input/select/textarea to 100% */
         .ag-theme-quartz .ag-cell-inline-editing input,
         .ag-theme-quartz .ag-cell-inline-editing select,
         .ag-theme-quartz .ag-cell-inline-editing textarea,
         .ag-theme-quartz .ag-cell-inline-editing .ag-input-field-input {
-          flex: 1 1 auto;
           width: 100% !important;
-          min-width: 0 !important;   /* prevent intrinsic min width from shrinking cell */
-          height: 100% !important;
-          padding: 6px 8px;
+          min-width: 0 !important;
+          height: 32px;
+          line-height: 28px;
+          padding: 0 10px;
           margin: 0;
-          border: 0;                 /* seamless with cell edges */
-          border-radius: 0;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          background: #fff;
           outline: none;
           box-sizing: border-box;
           font-size: 14px;
-          background: #fff;
+          box-shadow: none;
+          appearance: none;
         }
-
-        /* 4) Optional: clear any AG Grid inner adornments padding */
-        .ag-theme-quartz .ag-cell-inline-editing .ag-input-field {
-          padding: 0 !important;
-        }
-
-        /* 5) Optional: subtle focus ring while editing */
         .ag-theme-quartz .ag-cell-inline-editing input:focus,
         .ag-theme-quartz .ag-cell-inline-editing select:focus,
         .ag-theme-quartz .ag-cell-inline-editing textarea:focus {
-          box-shadow: inset 0 0 0 2px rgba(14, 68, 145, 0.15);
+          border-color: rgb(14, 68, 145);
+          box-shadow: 0 0 0 3px rgba(14, 68, 145, 0.12);
+        }
+        .ag-theme-quartz .ag-center-cols-container .ag-row {
+          height: 34px;
         }
       `}</style>
     </div>
