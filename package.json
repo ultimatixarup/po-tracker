@@ -7,9 +7,11 @@
     "ag-grid-enterprise": "34.1.2",
     "ag-grid-react": "34.1.2",
     "cors": "^2.8.5",
+    "crypto": "^1.0.1",
     "express": "^5.1.0",
     "morgan": "^1.10.1",
     "pouchdb": "^9.0.0",
+    "pouchdb-find": "^9.0.0",
     "react": "18",
     "react-dom": "18"
   },

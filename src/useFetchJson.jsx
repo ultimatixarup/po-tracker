@@ -1,24 +1,354 @@
-import { useState, useEffect } from 'react';
+"use client";
 
-/**
- * Fetch example Json data
- * Not recommended for production use!
- */
-export const useFetchJson = (url, limit) => {
-    const [data, setData] = useState();
-    const [loading, setLoading] = useState(false);
-    useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            
-            // Note error handling is omitted here for brevity
-            const response = await fetch(url);                
-            const json = await response.json();
-            const data = limit ? json.slice(0, limit) : json;
-            setData(data);
-            setLoading(false);
+import React, {
+  StrictMode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createRoot } from "react-dom/client";
+
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  themeQuartz,
+} from "ag-grid-community";
+import { AgGridReact } from "ag-grid-react";
+
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
+
+// Register AG Grid modules
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+/** ====== CONFIG ====== */
+const API_BASE = import.meta.env?.VITE_API_BASE || "http://localhost:3000";
+
+/** ====== THEME ====== */
+const myTheme = themeQuartz.withParams({
+  spacing: 2,
+  foregroundColor: "rgb(14, 68, 145)",
+  backgroundColor: "rgb(241, 247, 255)",
+  headerBackgroundColor: "rgb(228, 237, 250)",
+  rowHoverColor: "rgb(216, 226, 255)",
+});
+
+/** ====== HELPERS ====== */
+const pad2 = (n) => String(n).padStart(2, "0");
+const dateToMDY = (d, sep = "/") =>
+  d instanceof Date && !isNaN(d)
+    ? `${pad2(d.getMonth() + 1)}${sep}${pad2(d.getDate())}${sep}${d.getFullYear()}`
+    : "";
+
+/** ====== MAIN ====== */
+const GridExample = () => {
+  const gridRef = useRef(null);
+  const containerStyle = useMemo(
+    () => ({ width: "100%", maxWidth: 1300, margin: "0 auto", padding: 12 }),
+    []
+  );
+  const gridStyle = useMemo(
+    () => ({ width: "100%", height: "70vh", minHeight: 500 }),
+    []
+  );
+  const theme = useMemo(() => myTheme, []);
+
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Map server doc -> grid row
+  const docToRow = (doc) => {
+    const { _id, _rev, ...rest } = doc || {};
+    return { id: _id, _rev, ...rest };
+  };
+
+  // Fetch list
+  const loadRows = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/items?limit=500`);
+      if (!r.ok) throw new Error(`List failed: ${r.status}`);
+      const json = await r.json();
+      setRows((json.rows || []).map(docToRow));
+    } catch (e) {
+      console.error(e);
+      alert("Failed to load rows");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
+
+  // Columns
+  const [columnDefs] = useState([
+    { headerName: "ID", field: "id", editable: false, width: 120, pinned: "left" },
+    { headerName: "PMS", field: "PMS" },
+    { headerName: "WBS", field: "WBS" },
+    { headerName: "PCM", field: "PCM" },
+    { headerName: "PL", field: "PL" },
+    { headerName: "GL", field: "GL" },
+    { headerName: "Project Name", field: "FOProjectName", flex: 1, minWidth: 220 },
+    { headerName: "PR Number", field: "PRNumber" },
+    {
+      headerName: "PR Status",
+      field: "PRStatus",
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["OPEN", "CLOSED"] },
+      width: 160,
+    },
+    // add more columns here if needed...
+    {
+      headerName: "Actions",
+      field: "__actions",
+      pinned: "right",
+      width: 100,       // room for two tiny buttons
+      filter: false,
+      sortable: false,
+      editable: false,
+      cellClass: "actions-cell", // center content
+      cellRenderer: (p) => {
+        const doGetDoc = async (id) => {
+          const g = await fetch(`${API_BASE}/items/${encodeURIComponent(id)}`);
+          if (!g.ok) throw new Error("Failed to fetch doc");
+          return g.json();
         };
-        fetchData();
-    }, [url, limit]);
-    return { data, loading };
+
+        const handleDelete = async () => {
+          try {
+            const doc = await doGetDoc(p.data.id);
+            const r = await fetch(
+              `${API_BASE}/items/${encodeURIComponent(p.data.id)}?rev=${encodeURIComponent(doc._rev)}`,
+              { method: "DELETE" }
+            );
+            if (!r.ok) throw new Error(`Delete failed: ${r.status}`);
+            setRows((prev) => prev.filter((x) => x.id !== p.data.id));
+          } catch (e) {
+            console.error(e);
+            alert("Delete failed");
+          }
+        };
+
+        const handleCopy = async () => {
+          try {
+            const doc = await doGetDoc(p.data.id);
+            const { _id, _rev, ...rest } = doc || {};
+            const payload = {
+              ...rest,
+              FOProjectName: rest.FOProjectName
+                ? `${rest.FOProjectName} (copy)`
+                : "(copy)",
+            };
+            const r = await fetch(`${API_BASE}/items`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!r.ok) throw new Error(`Copy failed: ${r.status}`);
+            const saved = await r.json();
+            setRows((prev) => [docToRow(saved), ...prev]);
+          } catch (e) {
+            console.error(e);
+            alert("Copy failed");
+          }
+        };
+
+        return (
+          <div className="actions-wrap">
+            <button
+              className="icon-btn icon-btn-neutral"
+              onClick={handleCopy}
+              title="Copy row"
+              aria-label="Copy row"
+            >
+              ⧉
+            </button>
+            <button
+              className="icon-btn icon-btn-danger"
+              onClick={handleDelete}
+              title="Delete row"
+              aria-label="Delete row"
+            >
+              ×
+            </button>
+          </div>
+        );
+      },
+    },
+  ]);
+
+  const defaultColDef = useMemo(
+    () => ({
+      editable: true,
+      filter: true,
+      sortable: true,
+      resizable: true,
+      floatingFilter: true,
+      minWidth: 160, // wider default so editors have room
+    }),
+    []
+  );
+
+  const getRowId = useCallback((p) => p.data.id, []);
+
+  // Inline update
+  const onCellValueChanged = async (params) => {
+    const { data, colDef, newValue, oldValue } = params;
+    if (newValue === oldValue) return;
+    const field = colDef.field;
+    if (!data?.id || !field) return;
+
+    try {
+      const r = await fetch(`${API_BASE}/items/${encodeURIComponent(data.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: newValue }),
+      });
+      if (!r.ok) throw new Error(`Patch failed: ${r.status}`);
+      const saved = await r.json();
+      const updated = docToRow(saved);
+      setRows((prev) =>
+        prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
+      );
+    } catch (e) {
+      console.error(e);
+      alert("Update failed. Reverting cell.");
+      params.node.setDataValue(field, oldValue);
+    }
+  };
+
+  return (
+    <div style={containerStyle}>
+      <header style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button className="btn" onClick={loadRows} disabled={loading}>
+          {loading ? "Loading…" : "Reload"}
+        </button>
+        <span style={{ marginLeft: "auto", fontSize: 12, opacity: 0.7 }}>
+          API: {API_BASE}
+        </span>
+      </header>
+
+      <div style={gridStyle} className="ag-theme-quartz">
+        <AgGridReact
+          ref={gridRef}
+          rowData={rows}
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          getRowId={getRowId}
+          theme={theme}
+          animateRows
+          rowClassRules={{ "row-closed": (p) => p.data?.PRStatus === "CLOSED" }}
+          onCellValueChanged={onCellValueChanged}
+        />
+      </div>
+
+      <style>{`
+        .btn {
+          padding: 6px 10px;
+          border: 1px solid #ccc;
+          border-radius: 6px;
+          background: #fff;
+          cursor: pointer;
+        }
+
+        /* Tiny icon buttons */
+        .actions-wrap {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          width: 100%;
+        }
+        .icon-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          padding: 0;
+          border: 1px solid rgba(0,0,0,0.12);
+          border-radius: 6px;
+          background: #fff;
+          line-height: 1;
+          font-size: 12px;
+          cursor: pointer;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+        .icon-btn:hover { box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
+        .icon-btn-danger { color: #b3261e; border-color: #f0c9c7; }
+        .icon-btn-danger:hover { background: #ffecec; }
+        .icon-btn-neutral { color: #0b254b; border-color: #d3dbe7; }
+        .icon-btn-neutral:hover { background: #edf3ff; }
+
+        /* Center action icons in their cell */
+        .actions-cell {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        /* ========= INLINE EDITOR: fill entire cell ========= */
+
+        /* 1) Remove padding so the editor can use the full cell box */
+        .ag-theme-quartz .ag-cell.ag-cell-inline-editing {
+          padding: 0 !important;
+          overflow: visible; /* avoid clipping focus ring */
+        }
+
+        /* 2) Make the editor containers fill the cell */
+        .ag-theme-quartz .ag-cell-inline-editing .ag-cell-editor,
+        .ag-theme-quartz .ag-cell-inline-editing .ag-text-field,
+        .ag-theme-quartz .ag-cell-inline-editing .ag-input-field,
+        .ag-theme-quartz .ag-cell-inline-editing .ag-input-wrapper {
+          width: 100% !important;
+          height: 100% !important;
+          display: flex;
+          align-items: stretch;
+        }
+
+        /* 3) Stretch the actual input/select/textarea to 100% */
+        .ag-theme-quartz .ag-cell-inline-editing input,
+        .ag-theme-quartz .ag-cell-inline-editing select,
+        .ag-theme-quartz .ag-cell-inline-editing textarea,
+        .ag-theme-quartz .ag-cell-inline-editing .ag-input-field-input {
+          flex: 1 1 auto;
+          width: 100% !important;
+          min-width: 0 !important;   /* prevent intrinsic min width from shrinking cell */
+          height: 100% !important;
+          padding: 6px 8px;
+          margin: 0;
+          border: 0;                 /* seamless with cell edges */
+          border-radius: 0;
+          outline: none;
+          box-sizing: border-box;
+          font-size: 14px;
+          background: #fff;
+        }
+
+        /* 4) Optional: clear any AG Grid inner adornments padding */
+        .ag-theme-quartz .ag-cell-inline-editing .ag-input-field {
+          padding: 0 !important;
+        }
+
+        /* 5) Optional: subtle focus ring while editing */
+        .ag-theme-quartz .ag-cell-inline-editing input:focus,
+        .ag-theme-quartz .ag-cell-inline-editing select:focus,
+        .ag-theme-quartz .ag-cell-inline-editing textarea:focus {
+          box-shadow: inset 0 0 0 2px rgba(14, 68, 145, 0.15);
+        }
+      `}</style>
+    </div>
+  );
 };
+
+const root = createRoot(document.getElementById("root"));
+root.render(
+  <StrictMode>
+    <GridExample />
+  </StrictMode>
+);
