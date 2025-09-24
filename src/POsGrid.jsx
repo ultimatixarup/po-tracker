@@ -308,6 +308,10 @@ const POsGrid = () => {
             const doc = await doGetDoc(p.data.id);
             const rev = doc?._rev;
             if (!rev) throw new Error("Missing _rev for delete");
+            const ok = window.confirm(
+                `Delete this row? This cannot be undone.`
+              );
+              if (!ok) return;
             const r = await fetch(
               `${API_BASE}/items/${encodeURIComponent(p.data.id)}?rev=${encodeURIComponent(rev)}`,
               { method: "DELETE" }

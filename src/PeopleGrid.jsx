@@ -22,11 +22,11 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 /** ====== CONFIG: point these to your REST APIs ====== */
-// People DB (stores only people fields + CurrentProject PO ref)
+// People DB (stores only people fields + CurrentProject (optional) + PR)
 const ORIGIN = "http://localhost:5902";
 const API_BASE =
   import.meta.env?.VITE_API_BASE || `${ORIGIN}/db/people_db`;
-// PO DB (joined live by PO number)
+// PO DB (joined live by PR -> PRNumber)
 const PO_API_BASE =
   import.meta.env?.VITE_PO_API_BASE || `${ORIGIN}/db/po_db`;
 
@@ -60,7 +60,7 @@ const toMDY = (v) => {
   return String(v);
 };
 
-/** ====== EMPTY FORM (only people fields + PO ref) ====== */
+/** ====== EMPTY FORM (only people fields + PR (join key) + optional CurrentProject) ====== */
 const emptyForm = () => {
   const today = new Date();
   return {
@@ -82,33 +82,37 @@ const emptyForm = () => {
     EighteenMonthDate: "",
     BilledThru: "",
     WksRemaining: 0,
-    // The ONLY project reference we store on People:
-    CurrentProject: "", // PO number
+
+    // Join key for PO lookups:
+    PR: "",                 // <-- NEW: We join PO DB via PRNumber
+
+    // Optional, kept if you still want to store a PO ref separately (not used for join):
+    CurrentProject: "",     // (PO #, not used for PO join anymore)
   };
 };
 
-/** ====== PO LOOKUP HELPERS (never throw) ====== */
-async function fetchPOByPO(poNumber) {
-  const key = String(poNumber || "").trim();
+/** ====== PO LOOKUP HELPERS (by PR -> PRNumber, never throw) ====== */
+async function fetchPOByPR(prNumber) {
+  const key = String(prNumber || "").trim();
   if (!key) return null;
   try {
     const r = await fetch(`${PO_API_BASE}/items/_find`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selector: { PO: key }, limit: 1 }),
+      body: JSON.stringify({ selector: { PRNumber: key }, limit: 1 }),
     });
-    if (!r.ok) throw new Error(`PO lookup failed: ${r.status}`);
+    if (!r.ok) throw new Error(`PO lookup by PR failed: ${r.status}`);
     const docs = await r.json();
     return Array.isArray(docs) && docs.length ? docs[0] : null;
   } catch (e) {
-    console.warn("PO lookup error (single):", e?.message || e);
+    console.warn("PO lookup error (single, PR):", e?.message || e);
     return null;
   }
 }
 
-async function fetchPOsByList(poList) {
+async function fetchPOsByPRList(prList) {
   const list = Array.from(
-    new Set((poList || []).map(v => String(v || "").trim()).filter(Boolean))
+    new Set((prList || []).map(v => String(v || "").trim()).filter(Boolean))
   );
   if (!list.length) return {};
   try {
@@ -116,17 +120,17 @@ async function fetchPOsByList(poList) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        selector: { PO: { $in: list } },
+        selector: { PRNumber: { $in: list } },
         limit: Math.max(500, list.length),
       }),
     });
-    if (!r.ok) throw new Error(`PO batch lookup failed: ${r.status}`);
+    if (!r.ok) throw new Error(`PO batch lookup by PR failed: ${r.status}`);
     const docs = await r.json();
     const map = {};
-    for (const d of docs || []) if (d?.PO) map[String(d.PO)] = d;
+    for (const d of docs || []) if (d?.PRNumber) map[String(d.PRNumber)] = d;
     return map;
   } catch (e) {
-    console.warn("PO batch lookup error:", e?.message || e);
+    console.warn("PO batch lookup error (PR):", e?.message || e);
     return {};
   }
 }
@@ -154,7 +158,7 @@ const PeopleGrid = () => {
 
   // Data state
   const [rows, setRows] = useState([]);     // people rows
-  const [poMap, setPoMap] = useState({});   // { PO#: poDoc }
+  const [poMap, setPoMap] = useState({});   // { PR#: poDoc }
   const [loading, setLoading] = useState(false);
   const [loadingPOs, setLoadingPOs] = useState(false);
 
@@ -164,7 +168,7 @@ const PeopleGrid = () => {
     return { id: _id, _rev, ...rest };
   };
 
-  // Load people first (always show), then try to join POs (best-effort)
+  // Load people first (always show), then try to join POs by PR (best-effort)
   const loadRows = useCallback(async () => {
     setLoading(true);
     let peopleRows = [];
@@ -181,14 +185,14 @@ const PeopleGrid = () => {
       setLoading(false);
     }
 
-    // Join POs independently; failure won't blank the grid
+    // Join POs by PR independently; failure won't blank the grid
     try {
       setLoadingPOs(true);
-      const poKeys = peopleRows.map(x => x.CurrentProject);
-      const map = await fetchPOsByList(poKeys);
+      const prKeys = peopleRows.map(x => x.PR);
+      const map = await fetchPOsByPRList(prKeys);
       setPoMap(map); // if {}, derived cols render blank/placeholder
     } catch (e) {
-      console.warn("PO join failed:", e?.message || e);
+      console.warn("PO join (by PR) failed:", e?.message || e);
     } finally {
       setLoadingPOs(false);
     }
@@ -198,11 +202,12 @@ const PeopleGrid = () => {
     loadRows();
   }, [loadRows]);
 
-  /** ====== value getters pulling from poMap (read-only derived columns) ====== */
+  /** ====== value getters pulling from poMap by PR (read-only derived columns) ====== */
   const vgFromPO = useCallback(
     (field, fmt = (v) => v, placeholder = "—") =>
       (p) => {
-        const po = poMap?.[String(p.data?.CurrentProject || "")];
+        const pr = String(p.data?.PR || "");
+        const po = pr ? poMap?.[pr] : undefined;
         const val = fmt(po?.[field]);
         return (val === undefined || val === null || val === "") ? placeholder : val;
       },
@@ -252,10 +257,13 @@ const PeopleGrid = () => {
     { headerName: "First Day FO", field: "FirstDayFO", valueFormatter: ({ value }) => toMDY(value), minWidth: 140 },
     { headerName: "Prj. Start", field: "PrjStart", valueFormatter: ({ value }) => toMDY(value), minWidth: 130 },
 
-    // The ONLY project ref stored on People:
-    { headerName: "Current Project (PO #)", field: "CurrentProject", minWidth: 170 },
+    // New: PR (join key)
+    { headerName: "PR", field: "PR", minWidth: 150 },
 
-    // Derived (read-only) from PO join
+    // Optional, still editable if you want to store a PO number separately (not used for join)
+    { headerName: "Current Project (PO #)", valueGetter: vgFromPO("PO"), field: "CurrentProject", minWidth: 170 },
+
+    // Derived (read-only) from PO join by PR
     { headerName: "Supplier (from PO)", valueGetter: vgFromPO("Supplier"), editable: false, minWidth: 170 },
     { headerName: "Current PO End", valueGetter: vgDateFromPO("ProjectEnd"), editable: false, minWidth: 150 },
     { headerName: "GL (from PO)", valueGetter: vgFromPO("GL"), editable: false, minWidth: 120 },
@@ -296,6 +304,15 @@ const PeopleGrid = () => {
         };
 
         const handleDelete = async () => {
+          const label =
+            p.data?.SupplierPointOfContact ||
+            p.data?.PR ||
+            p.data?.id;
+          const ok = window.confirm(
+            `Delete this row${label ? `: "${label}"` : ""}? This cannot be undone.`
+          );
+          if (!ok) return;
+
           try {
             const doc = await doGetDoc(p.data.id);
             const rev = doc?._rev;
@@ -316,7 +333,7 @@ const PeopleGrid = () => {
           try {
             const source = await doGetDoc(p.data.id);
             const { _id, _rev, ...rest } = source || {};
-            // Only copy people fields + CurrentProject
+            // Only copy people fields (including PR & CurrentProject)
             const payload = { ...rest };
             const r = await fetch(`${API_BASE}/items`, {
               method: "POST",
@@ -327,9 +344,10 @@ const PeopleGrid = () => {
             const saved = await r.json();
             const newRow = docToRow(saved);
             setRows((prev) => [newRow, ...prev]);
-            if (payload.CurrentProject) {
-              const poDoc = await fetchPOByPO(payload.CurrentProject);
-              setPoMap((m) => ({ ...m, ...(poDoc?.PO ? { [poDoc.PO]: poDoc } : {}) }));
+            // warm cache for PR if present
+            if (payload.PR) {
+              const poDoc = await fetchPOByPR(payload.PR);
+              setPoMap((m) => ({ ...m, ...(poDoc?.PRNumber ? { [poDoc.PRNumber]: poDoc } : {}) }));
             }
           } catch (e) {
             console.error(e);
@@ -403,7 +421,7 @@ const PeopleGrid = () => {
     setForm((f) => ({ ...f, [name]: value === "" ? "" : Number(value) }));
   };
 
-  // Create (stores only people fields + CurrentProject)
+  // Create (stores only people fields incl. PR)
   const saveRow = async () => {
     try {
       const payload = { ...form };
@@ -418,10 +436,10 @@ const PeopleGrid = () => {
       setRows((prev) => [newRow, ...prev]); // show on top
       setShowForm(false);
 
-      // Ensure poMap has this PO (best-effort)
-      if (payload.CurrentProject) {
-        const poDoc = await fetchPOByPO(payload.CurrentProject);
-        setPoMap((m) => ({ ...m, ...(poDoc?.PO ? { [poDoc.PO]: poDoc } : {}) }));
+      // Ensure poMap has this PR (best-effort)
+      if (payload.PR) {
+        const poDoc = await fetchPOByPR(payload.PR);
+        setPoMap((m) => ({ ...m, ...(poDoc?.PRNumber ? { [poDoc.PRNumber]: poDoc } : {}) }));
       }
     } catch (err) {
       console.error(err);
@@ -429,7 +447,7 @@ const PeopleGrid = () => {
     }
   };
 
-  // Inline update; when CurrentProject changes, refresh poMap entry
+  // Inline update; when PR changes, refresh poMap entry
   const onCellValueChanged = async (params) => {
     const { data, colDef, newValue, oldValue } = params;
     if (newValue === oldValue) return;
@@ -437,43 +455,26 @@ const PeopleGrid = () => {
     if (!data?.id || !field) return;
 
     try {
-      if (field !== "CurrentProject") {
-        const r = await fetch(`${API_BASE}/items/${encodeURIComponent(data.id)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ [field]: newValue }),
-        });
-        if (!r.ok) throw new Error(`Patch failed: ${r.status}`);
-        const saved = await r.json();
-        const updated = docToRow(saved);
-        setRows((prev) =>
-          prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
-        );
-        return;
-      }
-
-      // CurrentProject changed: patch only that field, then refresh that PO in cache
-      {
-        const r = await fetch(`${API_BASE}/items/${encodeURIComponent(data.id)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ CurrentProject: newValue }),
-        });
-        if (!r.ok) throw new Error(`Patch failed: ${r.status}`);
-        const saved = await r.json();
-        const updated = docToRow(saved);
-        setRows((prev) =>
-          prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
-        );
-      }
-
-      const poDoc = await fetchPOByPO(newValue); // safe (no-throw)
-      setPoMap((m) => {
-        const copy = { ...m };
-        if (poDoc?.PO) copy[poDoc.PO] = poDoc;
-        return copy;
+      const r = await fetch(`${API_BASE}/items/${encodeURIComponent(data.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: newValue }),
       });
+      if (!r.ok) throw new Error(`Patch failed: ${r.status}`);
+      const saved = await r.json();
+      const updated = docToRow(saved);
+      setRows((prev) =>
+        prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
+      );
 
+      if (field === "PR") {
+        const poDoc = await fetchPOByPR(newValue); // safe (no-throw)
+        setPoMap((m) => {
+          const copy = { ...m };
+          if (poDoc?.PRNumber) copy[poDoc.PRNumber] = poDoc;
+          return copy;
+        });
+      }
     } catch (e) {
       console.error(e);
       alert("Update failed. Reverting cell.");
@@ -531,38 +532,41 @@ const PeopleGrid = () => {
               <label><div>First Day FO</div><input name="FirstDayFO" value={form.FirstDayFO} onChange={onField} placeholder="MM/DD/YYYY" /></label>
               <label><div>Prj. Start</div><input name="PrjStart" value={form.PrjStart} onChange={onField} placeholder="MM/DD/YYYY" /></label>
 
-              {/* The only stored PO-ref on People */}
+              {/* Join key: PR */}
               <label>
-                <div>Current Project (PO #)</div>
+                <div>PR (joins PO by PRNumber)</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
-                    name="CurrentProject"
-                    value={form.CurrentProject}
+                    name="PR"
+                    value={form.PR}
                     onChange={onField}
                     onBlur={async () => {
-                      if (!form.CurrentProject) { setPoPreview(null); return; }
-                      const poDoc = await fetchPOByPO(form.CurrentProject);
+                      if (!form.PR) { setPoPreview(null); return; }
+                      const poDoc = await fetchPOByPR(form.PR);
                       setPoPreview(poDoc || null);
                     }}
-                    placeholder="Enter PO number"
+                    placeholder="Enter PR number (e.g., PR850396)"
                     style={{ flex: 1 }}
                   />
                   <button
                     type="button"
                     className="btn"
                     onClick={async () => {
-                      if (!form.CurrentProject) {
-                        alert("Enter a Current Project (PO) first.");
+                      if (!form.PR) {
+                        alert("Enter a PR number first.");
                         return;
                       }
-                      const poDoc = await fetchPOByPO(form.CurrentProject);
+                      const poDoc = await fetchPOByPR(form.PR);
                       setPoPreview(poDoc || null);
                     }}
                   >
-                    Preview from PO
+                    Preview from PR
                   </button>
                 </div>
               </label>
+
+              {/* Optional field you may still want to keep (not used for join) */}
+              <label><div>Current Project (PO #)</div><input name="CurrentProject" value={form.CurrentProject} onChange={onField} placeholder="Optional PO number" /></label>
 
               <label><div>Last Day FO (Term in PP)</div><input name="LastDayFO" value={form.LastDayFO} onChange={onField} placeholder="MM/DD/YYYY" /></label>
 
@@ -577,9 +581,9 @@ const PeopleGrid = () => {
               <label><div>Wks remaininig</div><input type="number" name="WksRemaining" value={form.WksRemaining} onChange={onNumber} /></label>
             </div>
 
-            {/* Read-only preview from PO */}
+            {/* Read-only preview from PO by PR */}
             <div style={{ marginTop: 12, paddingTop: 8, borderTop: "1px solid #e5e7eb" }}>
-              <h4 style={{ margin: "0 0 8px 0" }}>PO Details (derived)</h4>
+              <h4 style={{ margin: "0 0 8px 0" }}>PO Details (derived via PR)</h4>
               <div className="grid2">
                 <label><div>Supplier</div><input value={poPreview?.Supplier ?? "—"} readOnly /></label>
                 <label><div>Current PO End</div><input value={toMDY(poPreview?.ProjectEnd) || "—"} readOnly /></label>
