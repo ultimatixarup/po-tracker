@@ -289,14 +289,18 @@ const PeopleGrid = () => {
             </button>
             <button
               className="icon-btn icon-btn-danger"
-              onClick={handleDelete}
+              onClick={() => {
+                setRowToDelete(p.data);      // store selected row
+                setShowDeleteDialog(true);   // open modal
+              }}
               title="Delete row"
               aria-label="Delete row"
             >
               ×
             </button>
           </div>
-        );
+            
+      );
       },
     },
   ]);
@@ -318,6 +322,10 @@ const PeopleGrid = () => {
   // Modal form state
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm());
+
+  //Delete confirmation dialog
+ const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+const [rowToDelete, setRowToDelete] = useState(null);
 
   const openForm = () => {
     setForm(emptyForm());
@@ -469,6 +477,50 @@ const PeopleGrid = () => {
         </div>
       )}
 
+      {showDeleteDialog && (
+  <div className="modal-backdrop" onClick={() => setShowDeleteDialog(false)}>
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-header">
+        <h3 style={{ margin: 0 }}>Confirm Delete</h3>
+        <button className="btn btn-ghost" onClick={() => setShowDeleteDialog(false)}>✕</button>
+      </div>
+
+      <div style={{ padding: '12px 0' }}>
+        Are you sure you want to delete <strong>{rowToDelete?.SupplierPointOfContact || "this row"}</strong>?
+      </div>
+
+      <div className="modal-actions">
+        <div style={{ flex: 1 }} />
+        <button className="btn btn-ghost" onClick={() => setShowDeleteDialog(false)}>Cancel</button>
+        <button
+          className="btn btn-primary"
+          onClick={async () => {
+            try {
+              const g = await fetch(`${API_BASE}/items/${encodeURIComponent(rowToDelete.id)}`);
+              const doc = await g.json();
+              const rev = doc._rev;
+              const r = await fetch(
+                `${API_BASE}/items/${encodeURIComponent(rowToDelete.id)}?rev=${encodeURIComponent(rev)}`,
+                { method: "DELETE" }
+              );
+              if (!r.ok) throw new Error("Delete failed");
+              setRows((prev) => prev.filter((x) => x.id !== rowToDelete.id));
+              setShowDeleteDialog(false);
+            } catch (err) {
+              console.error(err);
+              alert("Failed to delete row.");
+              setShowDeleteDialog(false);
+            }
+          }}
+        >
+          Confirm Delete
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
       <div style={gridStyle} className="ag-theme-quartz">
         <AgGridReact
           ref={gridRef}
@@ -482,6 +534,8 @@ const PeopleGrid = () => {
           onCellValueChanged={onCellValueChanged}
         />
       </div>
+
+
 
       <style>{`
         :root {
@@ -583,7 +637,15 @@ const PeopleGrid = () => {
           display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 8px; border-top: 1px solid #e5e7eb;
         }
 
-        body.modal-open { overflow: hidden; }
+        body.modal-open { overflow: hidden; 
+        .modal-backdrop {
+         z-index: 10000;
+        }
+
+        .modal {
+          z-index: 10001;
+        }
+        }
       `}</style>
     </div>
   );
