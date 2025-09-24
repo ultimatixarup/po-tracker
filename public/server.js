@@ -10,7 +10,7 @@ PouchDB.plugin(require("pouchdb-find"));
 
 // ---- Config ----
 const DEFAULT_DB = process.env.DB_NAME || "myitems";
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5902;
 
 const app = express();
 app.use(cors());
