@@ -33,122 +33,116 @@ const myTheme = themeQuartz.withParams({
   rowHoverColor: "rgb(216, 226, 255)",
 });
 
-/** ====== HELPERS ====== */
+/** ====== DATE HELPERS (display as MM/DD/YYYY, accept many inputs) ====== */
 const pad2 = (n) => String(n).padStart(2, "0");
-const dateToMDY = (d, sep = "/") =>
-  d instanceof Date && !isNaN(d)
-    ? `${pad2(d.getMonth() + 1)}${sep}${pad2(d.getDate())}${sep}${d.getFullYear()}`
-    : "";
+const YMDtoMDY = (s, sep = "/") => {
+  const m = String(s || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? [m[2], m[3], m[1]].join(sep) : "";
+};
+const toMDY = (v) => {
+  if (!v) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return YMDtoMDY(v);
+  const d = v instanceof Date ? v : new Date(String(v));
+  if (!isNaN(d))
+    return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
+  const m = String(v).match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  if (m) {
+    let [, M, D, Y] = m.map(Number);
+    if (Y < 100) Y += Y >= 50 ? 1900 : 2000;
+    return `${pad2(M)}/${pad2(D)}/${Y}`;
+  }
+  return String(v);
+};
 
-// PR Status list (dropdown)
-const PR_STATUS_VALUES = [
-  "TBD",
-  "Pending Quote",
-  "Submitted",
-  "Approved",
-  "Receiving",
-  "Fully Received",
-  "Expired",
-  "Cancelled",
-];
-
-// Initial form values
+/** ====== DEFAULTS ====== */
 const emptyForm = () => {
-  const now = new Date();
-  const wkEnd = new Date(now);
-  wkEnd.setDate(now.getDate() + 6);
-  const projEnd = new Date(now);
-  projEnd.setMonth(now.getMonth() + 3);
+  const today = new Date();
+  const wkEnd = new Date(today);
+  wkEnd.setDate(today.getDate() + 6);
+  const projEnd = new Date(today);
+  projEnd.setMonth(today.getMonth() + 3);
   return {
-    // NEW SCHEMA
-    DeliverablePOCOrASMLAcronym: "",
-    FONType: "",
-    Supplier: "",
-    Group: "",
-    Project: "",
-    Program: "",
-    PBS: "",
+    PMS: "",
     WBS: "",
     PCM: "",
     PL: "",
     GL: "",
-    GTL: "",
     FOProjectName: "",
-    POProjectStart: dateToMDY(now),
-    WkStart: dateToMDY(now),
-    ProjectEnd: dateToMDY(projEnd),
-    WkEnd: dateToMDY(wkEnd),
+    POProjectStart: toMDY(today),
+    WkStart: toMDY(today),
+    ProjectEnd: toMDY(projEnd),
+    WkEnd: toMDY(wkEnd),
     PRNumber: "",
-    PRStatus: "TBD",
+    PRStatus: "OPEN", // OPEN | CLOSED | etc.
     PO: "",
     POManWks: 0,
     PRAmount: 0,
     PRWklyRate: 0,
-    PRHrlyBillRate: 0,
+    POMonthlyBillRate: 0,
+
+    // NEW FIELDS:
+    PRBilledDate: "",             // date
+    DollarsRemaining: 0,          // number
+    DeliverableRemainingWks: 0,   // number
   };
 };
 
-// Clipboard parsing helpers (expanded aliases for new schema)
+// Clipboard parsing helpers
 const FIELD_ALIASES = {
-  // Deliverable / acronym
-  "deliverable point of contact or asml acronym": "DeliverablePOCOrASMLAcronym",
-  deliverablepoc: "DeliverablePOCOrASMLAcronym",
-  poc: "DeliverablePOCOrASMLAcronym",
-  asmlacronym: "DeliverablePOCOrASMLAcronym",
-
-  // FO N-Type
-  "fo n-type": "FONType",
-  "fo n type": "FONType",
-  fountype: "FONType",
-
-  supplier: "Supplier",
-  group: "Group",
-  project: "Project",
-  program: "Program",
-  pbs: "PBS",
-
+  pms: "PMS",
   wbs: "WBS",
   pcm: "PCM",
   pl: "PL",
   gl: "GL",
-  gtl: "GTL",
-
-  "fo project name": "FOProjectName",
-  "fo project name (project group description yyqq fo)": "FOProjectName",
-
+  projectname: "FOProjectName",
+  foprojectname: "FOProjectName",
+  poprojectstart: "POProjectStart",
   "po project start": "POProjectStart",
-
+  startdate: "POProjectStart",
   wkstart: "WkStart",
-  "wk start": "WkStart",
-
-  "project end": "ProjectEnd",
-
+  weekstart: "WkStart",
+  projectend: "ProjectEnd",
+  enddate: "ProjectEnd",
   wkend: "WkEnd",
-  "wk end": "WkEnd",
-
+  weekend: "WkEnd",
+  prnumber: "PRNumber",
   "pr number": "PRNumber",
+  prstatus: "PRStatus",
   "pr status": "PRStatus",
-
+  status: "PRStatus",
   po: "PO",
-  "po (pending)": "PO",
-
-  "po man wks": "POManWks",
+  pomanwks: "POManWks",
+  "po man weeks": "POManWks",
+  pramount: "PRAmount",
   "pr amount": "PRAmount",
-  "pr wkly rate": "PRWklyRate",
-  "pr hrly bill rate": "PRHrlyBillRate",
+  prwklyrate: "PRWklyRate",
+  "pr weekly rate": "PRWklyRate",
+  pomonthlybillrate: "POMonthlyBillRate",
+  "po monthly bill rate": "POMonthlyBillRate",
+
+  // NEW ALIASES:
+  "pr billed date": "PRBilledDate",
+  prbilleddate: "PRBilledDate",
+  "dollars remaining": "DollarsRemaining",
+  dollarsremaining: "DollarsRemaining",
+  "deliverable remaining wks": "DeliverableRemainingWks",
+  deliverableremainingwks: "DeliverableRemainingWks",
 };
 const NUMERIC_FIELDS = new Set([
   "POManWks",
   "PRAmount",
   "PRWklyRate",
-  "PRHrlyBillRate",
+  "POMonthlyBillRate",
+  "DollarsRemaining",
+  "DeliverableRemainingWks",
 ]);
 const normalizeKey = (k) =>
   (k ?? "")
     .toString()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+    .trim()
+    .replace(/\s+/g, "");
 
 const parseClipboardPairs = (text) => {
   let obj = {};
@@ -157,7 +151,10 @@ const parseClipboardPairs = (text) => {
   if (t.startsWith("{") || t.startsWith("[")) {
     try {
       const j = JSON.parse(t);
-      if (Array.isArray(j)) j.forEach((it) => it && typeof it === "object" && Object.assign(obj, it));
+      if (Array.isArray(j))
+        j.forEach(
+          (it) => it && typeof it === "object" && Object.assign(obj, it)
+        );
       else if (j && typeof j === "object") obj = j;
     } catch {}
   }
@@ -179,14 +176,11 @@ const parseClipboardPairs = (text) => {
     if (!field) continue;
     let v = (rawVal ?? "").toString().trim();
     if (NUMERIC_FIELDS.has(field)) {
-      const n = Number(v);
+      const n = Number(v.replace(/[$, ]/g, ""));
       v = Number.isFinite(n) ? n : 0;
     } else if (field === "PRStatus") {
-      // normalize to the allowed set (fallback to raw)
-      const match = PR_STATUS_VALUES.find(
-        (s) => s.toLowerCase() === v.toLowerCase()
-      );
-      v = match || v;
+      const up = v.toUpperCase();
+      v = ["OPEN", "CLOSED", "TBD", "PENDING QUOTE", "SUBMITTED", "APPROVED", "RECEIVING", "FULLY RECEIVED", "EXPIRED", "CANCELLED"].includes(up) ? up : "OPEN";
     }
     result[field] = v;
   }
@@ -201,7 +195,7 @@ const POsGrid = () => {
   const containerStyle = useMemo(
     () => ({
       width: "100%",
-      maxWidth: 1400,
+      maxWidth: 1300,
       margin: "0 auto",
       padding: 12,
       boxSizing: "border-box",
@@ -231,7 +225,8 @@ const POsGrid = () => {
       const r = await fetch(`${API_BASE}/items?limit=500`);
       if (!r.ok) throw new Error(`List failed: ${r.status}`);
       const json = await r.json();
-      setRows((json.rows || []).map(docToRow));
+      const mapped = (json.rows || []).map(docToRow);
+      setRows(mapped);
     } catch (e) {
       console.error(e);
       alert("Failed to load rows from server.");
@@ -244,49 +239,58 @@ const POsGrid = () => {
     loadRows();
   }, [loadRows]);
 
-  // Columns (NEW SCHEMA)
+  // Columns
   const [columnDefs] = useState([
     { headerName: "ID", field: "id", editable: false, width: 120, pinned: "left", hide: true },
 
-    { headerName: "Deliverable Point of Contact OR ASML Acronym", field: "DeliverablePOCOrASMLAcronym", minWidth: 260, flex: 1 },
-    { headerName: "FO N-Type", field: "FONType", minWidth: 130 },
-    { headerName: "Supplier", field: "Supplier", minWidth: 140 },
-    { headerName: "Group (SDev, CDev)", field: "Group", minWidth: 160 },
-    { headerName: "Project", field: "Project", minWidth: 150 },
-    { headerName: "Program", field: "Program", minWidth: 150 },
-    { headerName: "PBS", field: "PBS", minWidth: 120 },
-    { headerName: "WBS", field: "WBS", minWidth: 140 },
-    { headerName: "PCM", field: "PCM", minWidth: 100 },
-    { headerName: "PL", field: "PL", minWidth: 100 },
-    { headerName: "GL", field: "GL", minWidth: 100 },
-    { headerName: "GTL", field: "GTL", minWidth: 100 },
+    { headerName: "PMS", field: "PMS" },
+    { headerName: "WBS", field: "WBS" },
+    { headerName: "PCM", field: "PCM" },
+    { headerName: "PL", field: "PL" },
+    { headerName: "GL", field: "GL" },
+    { headerName: "Project Name", field: "FOProjectName", minWidth: 200, flex: 1 },
 
-    { headerName: "FO Project Name (Project Group Description YYQQ FO)", field: "FOProjectName", minWidth: 300 },
+    { headerName: "Project Start", field: "POProjectStart", valueFormatter: ({ value }) => toMDY(value) },
+    { headerName: "Week Start", field: "WkStart", valueFormatter: ({ value }) => toMDY(value) },
+    { headerName: "Project End", field: "ProjectEnd", valueFormatter: ({ value }) => toMDY(value) },
+    { headerName: "Week End", field: "WkEnd", valueFormatter: ({ value }) => toMDY(value) },
 
-    { headerName: "PO Project Start", field: "POProjectStart", minWidth: 150 },
-    { headerName: "wkStart", field: "WkStart", minWidth: 130 },
-    { headerName: "Project End", field: "ProjectEnd", minWidth: 150 },
-    { headerName: "wkEnd", field: "WkEnd", minWidth: 130 },
-
-    { headerName: "PR Number", field: "PRNumber", minWidth: 140 },
-
+    { headerName: "PR Number", field: "PRNumber" },
     {
-      headerName: "PR Status (TBD, Pending Quote, Submitted, Approved, Receiving, Fully Received, Expired, Cancelled)",
+      headerName: "PR Status",
       field: "PRStatus",
       editable: true,
       cellEditor: "agSelectCellEditor",
-      cellEditorParams: { values: PR_STATUS_VALUES },
+      cellEditorParams: {
+        values: [
+          "OPEN",
+          "TBD",
+          "PENDING QUOTE",
+          "SUBMITTED",
+          "APPROVED",
+          "RECEIVING",
+          "FULLY RECEIVED",
+          "EXPIRED",
+          "CANCELLED",
+          "CLOSED"
+        ]
+      },
       filter: "agSetColumnFilter",
-      minWidth: 520,
+      width: 180,
     },
+    { headerName: "PO", field: "PO" },
 
-    { headerName: "PO (pending)", field: "PO", minWidth: 140 },
+    { headerName: "PO Man Wks", field: "POManWks", type: "numericColumn", width: 160 },
+    { headerName: "PR Amount", field: "PRAmount", type: "numericColumn" },
+    { headerName: "PR Weekly Rate", field: "PRWklyRate", type: "numericColumn" },
+    { headerName: "PO Monthly Bill Rate", field: "POMonthlyBillRate", type: "numericColumn", minWidth: 200 },
 
-    { headerName: "PO Man Wks", field: "POManWks", type: "numericColumn", minWidth: 140 },
-    { headerName: "PR Amount", field: "PRAmount", type: "numericColumn", minWidth: 140 },
-    { headerName: "PR Wkly Rate", field: "PRWklyRate", type: "numericColumn", minWidth: 140 },
-    { headerName: "PR Hrly Bill Rate", field: "PRHrlyBillRate", type: "numericColumn", minWidth: 160 },
+    // ===== NEW COLUMNS =====
+    { headerName: "PR Billed Date", field: "PRBilledDate", valueFormatter: ({ value }) => toMDY(value), minWidth: 150 },
+    { headerName: "Dollars Remaining", field: "DollarsRemaining", type: "numericColumn", minWidth: 170 },
+    { headerName: "Deliverable Remaining Wks", field: "DeliverableRemainingWks", type: "numericColumn", minWidth: 220 },
 
+    // Actions
     {
       headerName: "",
       field: "__actions",
@@ -304,14 +308,11 @@ const POsGrid = () => {
         };
 
         const handleDelete = async () => {
+          if (!window.confirm("Delete this row? This cannot be undone.")) return;
           try {
             const doc = await doGetDoc(p.data.id);
             const rev = doc?._rev;
             if (!rev) throw new Error("Missing _rev for delete");
-            const ok = window.confirm(
-                `Delete this row? This cannot be undone.`
-              );
-              if (!ok) return;
             const r = await fetch(
               `${API_BASE}/items/${encodeURIComponent(p.data.id)}?rev=${encodeURIComponent(rev)}`,
               { method: "DELETE" }
@@ -379,7 +380,7 @@ const POsGrid = () => {
       sortable: true,
       resizable: true,
       floatingFilter: true,
-      minWidth: 150,
+      minWidth: 160,
     }),
     []
   );
@@ -396,6 +397,7 @@ const POsGrid = () => {
   };
   const closeForm = () => setShowForm(false);
 
+  // Scroll lock on modal open
   useEffect(() => {
     document.body.classList.toggle("modal-open", showForm);
     return () => document.body.classList.remove("modal-open");
@@ -415,10 +417,15 @@ const POsGrid = () => {
     try {
       const payload = {
         ...form,
+        PRStatus: (form.PRStatus || "OPEN").toUpperCase(),
         POManWks: Number(form.POManWks || 0),
         PRAmount: Number(form.PRAmount || 0),
         PRWklyRate: Number(form.PRWklyRate || 0),
-        PRHrlyBillRate: Number(form.PRHrlyBillRate || 0),
+        POMonthlyBillRate: Number(form.POMonthlyBillRate || 0),
+
+        // ensure numeric new fields are numbers
+        DollarsRemaining: Number(form.DollarsRemaining || 0),
+        DeliverableRemainingWks: Number(form.DeliverableRemainingWks || 0),
       };
       const r = await fetch(`${API_BASE}/items`, {
         method: "POST",
@@ -497,46 +504,50 @@ const POsGrid = () => {
         <div className="modal-backdrop" onClick={closeForm}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>Add New Row</h3>
+              <h3 style={{ margin: 0 }}>Add New PO</h3>
               <button className="btn btn-ghost" onClick={closeForm} aria-label="Close">✕</button>
             </div>
 
             <div className="grid2">
-              <label><div>Deliverable Point of Contact OR ASML Acronym</div><input name="DeliverablePOCOrASMLAcronym" value={form.DeliverablePOCOrASMLAcronym} onChange={onField} /></label>
-              <label><div>FO N-Type</div><input name="FONType" value={form.FONType} onChange={onField} /></label>
-              <label><div>Supplier</div><input name="Supplier" value={form.Supplier} onChange={onField} /></label>
-              <label><div>Group (SDev, CDev)</div><input name="Group" value={form.Group} onChange={onField} /></label>
-              <label><div>Project</div><input name="Project" value={form.Project} onChange={onField} /></label>
-              <label><div>Program</div><input name="Program" value={form.Program} onChange={onField} /></label>
-              <label><div>PBS</div><input name="PBS" value={form.PBS} onChange={onField} /></label>
+              <label><div>Project Name</div><input name="FOProjectName" value={form.FOProjectName} onChange={onField} /></label>
+              <label><div>PMS</div><input name="PMS" value={form.PMS} onChange={onField} /></label>
               <label><div>WBS</div><input name="WBS" value={form.WBS} onChange={onField} /></label>
               <label><div>PCM</div><input name="PCM" value={form.PCM} onChange={onField} /></label>
               <label><div>PL</div><input name="PL" value={form.PL} onChange={onField} /></label>
               <label><div>GL</div><input name="GL" value={form.GL} onChange={onField} /></label>
-              <label><div>GTL</div><input name="GTL" value={form.GTL} onChange={onField} /></label>
-
-              <label><div>FO Project Name (Project Group Description YYQQ FO)</div><input name="FOProjectName" value={form.FOProjectName} onChange={onField} /></label>
-
-              <label><div>PO Project Start</div><input name="POProjectStart" value={form.POProjectStart} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>wkStart</div><input name="WkStart" value={form.WkStart} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>Project End</div><input name="ProjectEnd" value={form.ProjectEnd} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>wkEnd</div><input name="WkEnd" value={form.WkEnd} onChange={onField} placeholder="MM/DD/YYYY" /></label>
 
               <label><div>PR Number</div><input name="PRNumber" value={form.PRNumber} onChange={onField} /></label>
-
               <label>
                 <div>PR Status</div>
                 <select name="PRStatus" value={form.PRStatus} onChange={onField}>
-                  {PR_STATUS_VALUES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  <option>OPEN</option>
+                  <option>TBD</option>
+                  <option>PENDING QUOTE</option>
+                  <option>SUBMITTED</option>
+                  <option>APPROVED</option>
+                  <option>RECEIVING</option>
+                  <option>FULLY RECEIVED</option>
+                  <option>EXPIRED</option>
+                  <option>CANCELLED</option>
+                  <option>CLOSED</option>
                 </select>
               </label>
-
-              <label><div>PO (pending)</div><input name="PO" value={form.PO} onChange={onField} /></label>
+              <label><div>PO</div><input name="PO" value={form.PO} onChange={onField} /></label>
 
               <label><div>PO Man Wks</div><input type="number" name="POManWks" value={form.POManWks} onChange={onNumber} /></label>
               <label><div>PR Amount</div><input type="number" name="PRAmount" value={form.PRAmount} onChange={onNumber} /></label>
-              <label><div>PR Wkly Rate</div><input type="number" name="PRWklyRate" value={form.PRWklyRate} onChange={onNumber} /></label>
-              <label><div>PR Hrly Bill Rate</div><input type="number" name="PRHrlyBillRate" value={form.PRHrlyBillRate} onChange={onNumber} /></label>
+              <label><div>PR Weekly Rate</div><input type="number" name="PRWklyRate" value={form.PRWklyRate} onChange={onNumber} /></label>
+              <label><div>PO Monthly Bill Rate</div><input type="number" name="POMonthlyBillRate" value={form.POMonthlyBillRate} onChange={onNumber} /></label>
+
+              <label><div>Project Start</div><input name="POProjectStart" value={form.POProjectStart} onChange={onField} placeholder="MM/DD/YYYY" /></label>
+              <label><div>Week Start</div><input name="WkStart" value={form.WkStart} onChange={onField} placeholder="MM/DD/YYYY" /></label>
+              <label><div>Project End</div><input name="ProjectEnd" value={form.ProjectEnd} onChange={onField} placeholder="MM/DD/YYYY" /></label>
+              <label><div>Week End</div><input name="WkEnd" value={form.WkEnd} onChange={onField} placeholder="MM/DD/YYYY" /></label>
+
+              {/* NEW FIELDS */}
+              <label><div>PR Billed Date</div><input name="PRBilledDate" value={form.PRBilledDate} onChange={onField} placeholder="MM/DD/YYYY" /></label>
+              <label><div>Dollars Remaining</div><input type="number" name="DollarsRemaining" value={form.DollarsRemaining} onChange={onNumber} /></label>
+              <label><div>Deliverable Remaining Wks</div><input type="number" name="DeliverableRemainingWks" value={form.DeliverableRemainingWks} onChange={onNumber} /></label>
             </div>
 
             <div className="modal-actions">
@@ -559,7 +570,8 @@ const POsGrid = () => {
           defaultColDef={defaultColDef}
           getRowId={getRowId}
           theme={theme}
-          animateRows
+          animateRows={true}
+          rowClassRules={{ "row-closed": (p) => p.data?.PRStatus === "CLOSED" }}
           onCellValueChanged={onCellValueChanged}
         />
       </div>
@@ -572,7 +584,7 @@ const POsGrid = () => {
         }
         * { box-sizing: border-box; }
         html, body, #root { height: 100%; margin: 0; }
-        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
                color: #0b254b; background: #f3f7ff; }
 
         header .btn { margin-right: 6px; }
@@ -593,6 +605,7 @@ const POsGrid = () => {
         .btn-danger { background: #b3261e; color: #fff; border-color: transparent; }
         .btn-ghost { background: transparent; border-color: transparent; }
 
+        /* Tiny icon buttons */
         .actions-wrap {
           display: inline-flex;
           align-items: center;
@@ -641,8 +654,14 @@ const POsGrid = () => {
         }
         input:focus, select:focus { border-color: var(--fc); box-shadow: 0 0 0 3px rgba(14,68,145,0.12); }
 
-        .actions-cell { display: flex; align-items: center; justify-content: center; }
+        /* Center action icons in their cell */
+        .actions-cell {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
 
+        /* Wider inline editors */
         .ag-theme-quartz .ag-cell-inline-editing input {
           width: 100% !important;
           min-width: 160px;
@@ -650,6 +669,7 @@ const POsGrid = () => {
           font-size: 14px;
         }
 
+        /* Modal */
         .modal-backdrop {
           position: fixed;
           inset: 0;
@@ -657,11 +677,11 @@ const POsGrid = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 10000;
+          z-index: 10000; /* above AG Grid overlays */
           padding: 16px;
         }
         .modal {
-          width: min(980px, 100%);
+          width: min(840px, 100%);
           max-height: 85vh;
           overflow: auto;
           background: #fff;
@@ -687,6 +707,25 @@ const POsGrid = () => {
           border-top: 1px solid #e5e7eb;
         }
 
+        /* Row coloring */
+        .row-closed {
+          background-color: #ffe6e6 !important;
+          color: #7a0a00 !important;
+          font-weight: 600;
+        }
+
+        /* AG Grid tweaks */
+        .ag-theme-quartz .ag-header {
+          border-top-left-radius: var(--radius);
+          border-top-right-radius: var(--radius);
+          overflow: hidden;
+        }
+        .ag-theme-quartz .ag-cell {
+          padding-top: 6px;
+          padding-bottom: 6px;
+        }
+
+        /* Lock background scroll when modal open */
         body.modal-open { overflow: hidden; }
       `}</style>
     </div>
