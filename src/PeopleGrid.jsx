@@ -21,8 +21,14 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-/** ====== CONFIG: point this to your REST API ====== */
-const API_BASE = import.meta.env?.VITE_API_BASE || "http://localhost:5902/db/people_db";
+/** ====== CONFIG: point these to your REST APIs ====== */
+// People DB (stores only people fields + CurrentProject PO ref)
+const ORIGIN = "http://localhost:5902";
+const API_BASE =
+  import.meta.env?.VITE_API_BASE || `${ORIGIN}/db/people_db`;
+// PO DB (joined live by PO number)
+const PO_API_BASE =
+  import.meta.env?.VITE_PO_API_BASE || `${ORIGIN}/db/po_db`;
 
 /** ====== THEME ====== */
 const myTheme = themeQuartz.withParams({
@@ -41,22 +47,20 @@ const YMDtoMDY = (s, sep = "/") => {
 };
 const toMDY = (v) => {
   if (!v) return "";
-  // Already Y-M-D?
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return YMDtoMDY(v);
-  // Try native Date
   const d = v instanceof Date ? v : new Date(String(v));
-  if (!isNaN(d)) return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
-  // Try M/D/Y simple
+  if (!isNaN(d))
+    return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
   const m = String(v).match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
   if (m) {
-    let [ , M, D, Y ] = m.map(Number);
+    let [, M, D, Y] = m.map(Number);
     if (Y < 100) Y += Y >= 50 ? 1900 : 2000;
     return `${pad2(M)}/${pad2(D)}/${Y}`;
   }
   return String(v);
 };
 
-/** ====== EMPTY FORM (defaults) ====== */
+/** ====== EMPTY FORM (only people fields + PO ref) ====== */
 const emptyForm = () => {
   const today = new Date();
   return {
@@ -73,24 +77,59 @@ const emptyForm = () => {
     ProjectRole: "",
     FirstDayFO: toMDY(today),
     PrjStart: toMDY(today),
-    CurrentPOEnd: "",
-    Supplier: "",
     LastDayFO: "",
-    CurrentProject: "",
-    HrlyBillRate: 0,
-    PayReviewedDate: "",
-    ProjectedPrjEnd: "",
     N: "NO",
     EighteenMonthDate: "",
-    CurrentPOBalance: 0,
     BilledThru: "",
     WksRemaining: 0,
-    POHrlyBillRate: 0,
-    WeeklyRate: 0,
-    GL: "",
-    GTL: "",
+    // The ONLY project reference we store on People:
+    CurrentProject: "", // PO number
   };
 };
+
+/** ====== PO LOOKUP HELPERS (never throw) ====== */
+async function fetchPOByPO(poNumber) {
+  const key = String(poNumber || "").trim();
+  if (!key) return null;
+  try {
+    const r = await fetch(`${PO_API_BASE}/items/_find`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selector: { PO: key }, limit: 1 }),
+    });
+    if (!r.ok) throw new Error(`PO lookup failed: ${r.status}`);
+    const docs = await r.json();
+    return Array.isArray(docs) && docs.length ? docs[0] : null;
+  } catch (e) {
+    console.warn("PO lookup error (single):", e?.message || e);
+    return null;
+  }
+}
+
+async function fetchPOsByList(poList) {
+  const list = Array.from(
+    new Set((poList || []).map(v => String(v || "").trim()).filter(Boolean))
+  );
+  if (!list.length) return {};
+  try {
+    const r = await fetch(`${PO_API_BASE}/items/_find`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selector: { PO: { $in: list } },
+        limit: Math.max(500, list.length),
+      }),
+    });
+    if (!r.ok) throw new Error(`PO batch lookup failed: ${r.status}`);
+    const docs = await r.json();
+    const map = {};
+    for (const d of docs || []) if (d?.PO) map[String(d.PO)] = d;
+    return map;
+  } catch (e) {
+    console.warn("PO batch lookup error:", e?.message || e);
+    return {};
+  }
+}
 
 /** ====== MAIN COMPONENT ====== */
 const PeopleGrid = () => {
@@ -113,31 +152,45 @@ const PeopleGrid = () => {
   );
   const theme = useMemo(() => myTheme, []);
 
-  // Data state (LIVE)
-  const [rows, setRows] = useState([]);
+  // Data state
+  const [rows, setRows] = useState([]);     // people rows
+  const [poMap, setPoMap] = useState({});   // { PO#: poDoc }
   const [loading, setLoading] = useState(false);
+  const [loadingPOs, setLoadingPOs] = useState(false);
 
   // Map server doc -> grid row
   const docToRow = (doc) => {
     const { _id, _rev, ...rest } = doc || {};
     return { id: _id, _rev, ...rest };
-    // NOTE: rest contains our new fields; server echoes them back as-is
   };
 
-  // Fetch list
+  // Load people first (always show), then try to join POs (best-effort)
   const loadRows = useCallback(async () => {
     setLoading(true);
+    let peopleRows = [];
     try {
       const r = await fetch(`${API_BASE}/items?limit=500`);
       if (!r.ok) throw new Error(`List failed: ${r.status}`);
       const json = await r.json();
-      const mapped = (json.rows || []).map(docToRow);
-      setRows(mapped);
+      peopleRows = (json.rows || []).map(docToRow);
+      setRows(peopleRows); // <- always set rows
     } catch (e) {
       console.error(e);
-      alert("Failed to load rows from server.");
+      alert("Failed to load people rows from server.");
     } finally {
       setLoading(false);
+    }
+
+    // Join POs independently; failure won't blank the grid
+    try {
+      setLoadingPOs(true);
+      const poKeys = peopleRows.map(x => x.CurrentProject);
+      const map = await fetchPOsByList(poKeys);
+      setPoMap(map); // if {}, derived cols render blank/placeholder
+    } catch (e) {
+      console.warn("PO join failed:", e?.message || e);
+    } finally {
+      setLoadingPOs(false);
     }
   }, []);
 
@@ -145,15 +198,26 @@ const PeopleGrid = () => {
     loadRows();
   }, [loadRows]);
 
-  /** ====== COLUMNS: NEW STRUCTURE ====== */
-  const [columnDefs] = useState([
-    // Hidden id for stable keys
+  /** ====== value getters pulling from poMap (read-only derived columns) ====== */
+  const vgFromPO = useCallback(
+    (field, fmt = (v) => v, placeholder = "—") =>
+      (p) => {
+        const po = poMap?.[String(p.data?.CurrentProject || "")];
+        const val = fmt(po?.[field]);
+        return (val === undefined || val === null || val === "") ? placeholder : val;
+      },
+    [poMap]
+  );
+  const vgDateFromPO = useCallback((field) => vgFromPO(field, toMDY), [vgFromPO]);
+
+  /** ====== COLUMNS ====== */
+  const columnDefs = useMemo(() => [
     { headerName: "ID", field: "id", hide: true },
 
+    // People-owned, editable
     { headerName: "Supplier Point of Contact", field: "SupplierPointOfContact", minWidth: 220, flex: 1 },
     { headerName: "Last Name", field: "LastName", minWidth: 140 },
     { headerName: "ASML Acronym", field: "ASMLAcronym", minWidth: 140 },
-
     { headerName: "DPOC Start Date", field: "DPOCStartDate", valueFormatter: ({ value }) => toMDY(value), minWidth: 150 },
     { headerName: "People Portal Status", field: "PeoplePortalStatus", minWidth: 170 },
 
@@ -171,7 +235,7 @@ const PeopleGrid = () => {
       editable: true,
       cellEditor: "agSelectCellEditor",
       cellEditorParams: { values: ["YES", "NO"] },
-      minWidth: 140,
+      minWidth: 160,
     },
     {
       headerName: "YUYV Spreadsheet Updated?",
@@ -179,7 +243,7 @@ const PeopleGrid = () => {
       editable: true,
       cellEditor: "agSelectCellEditor",
       cellEditorParams: { values: ["YES", "NO"] },
-      minWidth: 210,
+      minWidth: 220,
     },
 
     { headerName: "Employee ID", field: "EmployeeID", minWidth: 130 },
@@ -187,15 +251,21 @@ const PeopleGrid = () => {
     { headerName: "Project/Role", field: "ProjectRole", minWidth: 180 },
     { headerName: "First Day FO", field: "FirstDayFO", valueFormatter: ({ value }) => toMDY(value), minWidth: 140 },
     { headerName: "Prj. Start", field: "PrjStart", valueFormatter: ({ value }) => toMDY(value), minWidth: 130 },
-    { headerName: "Current PO End", field: "CurrentPOEnd", valueFormatter: ({ value }) => toMDY(value), minWidth: 150 },
-    { headerName: "Supplier", field: "Supplier", minWidth: 140 },
+
+    // The ONLY project ref stored on People:
+    { headerName: "Current Project (PO #)", field: "CurrentProject", minWidth: 170 },
+
+    // Derived (read-only) from PO join
+    { headerName: "Supplier (from PO)", valueGetter: vgFromPO("Supplier"), editable: false, minWidth: 170 },
+    { headerName: "Current PO End", valueGetter: vgDateFromPO("ProjectEnd"), editable: false, minWidth: 150 },
+    { headerName: "GL (from PO)", valueGetter: vgFromPO("GL"), editable: false, minWidth: 120 },
+    { headerName: "GTL (from PO)", valueGetter: vgFromPO("GTL"), editable: false, minWidth: 120 },
+    { headerName: "PO Hrly Bill Rate", valueGetter: vgFromPO("POHrlyBillRate"), type: "numericColumn", editable: false, minWidth: 170 },
+    { headerName: "PR Hrly Bill Rate", valueGetter: vgFromPO("PRHrlyBillRate"), type: "numericColumn", editable: false, minWidth: 170 },
+    { headerName: "PR Wkly Rate", valueGetter: vgFromPO("PRWklyRate"), type: "numericColumn", editable: false, minWidth: 150 },
+
+    // People-owned (keep editable)
     { headerName: "Last Day FO (Term in PP)", field: "LastDayFO", valueFormatter: ({ value }) => toMDY(value), minWidth: 220 },
-    { headerName: "Current Project", field: "CurrentProject", minWidth: 170 },
-
-    { headerName: "Hrly Bill Rate", field: "HrlyBillRate", type: "numericColumn", minWidth: 140 },
-    { headerName: "Pay Reviewed Date", field: "PayReviewedDate", valueFormatter: ({ value }) => toMDY(value), minWidth: 170 },
-    { headerName: "Projected Prj End", field: "ProjectedPrjEnd", valueFormatter: ({ value }) => toMDY(value), minWidth: 170 },
-
     {
       headerName: "N?",
       field: "N",
@@ -204,17 +274,11 @@ const PeopleGrid = () => {
       cellEditorParams: { values: ["YES", "NO"] },
       width: 90,
     },
-
     { headerName: "18 Month date", field: "EighteenMonthDate", valueFormatter: ({ value }) => toMDY(value), minWidth: 150 },
-    { headerName: "Current PO Balance", field: "CurrentPOBalance", type: "numericColumn", minWidth: 170 },
     { headerName: "Billed Thru…", field: "BilledThru", valueFormatter: ({ value }) => toMDY(value), minWidth: 140 },
     { headerName: "Wks remaininig", field: "WksRemaining", type: "numericColumn", minWidth: 150 },
-    { headerName: "PO Hrly Bill Rate", field: "POHrlyBillRate", type: "numericColumn", minWidth: 170 },
-    { headerName: "Weekly rate", field: "WeeklyRate", type: "numericColumn", minWidth: 140 },
-    { headerName: "GL", field: "GL", minWidth: 120 },
-    { headerName: "GTL", field: "GTL", minWidth: 120 },
 
-    // Actions (copy/delete)
+    // Actions
     {
       headerName: "",
       field: "__actions",
@@ -250,17 +314,10 @@ const PeopleGrid = () => {
 
         const handleCopy = async () => {
           try {
-            // 1) read latest
             const source = await doGetDoc(p.data.id);
-            // 2) strip db keys and tweak
             const { _id, _rev, ...rest } = source || {};
-            const payload = {
-              ...rest,
-              CurrentProject: rest.CurrentProject
-                ? `${rest.CurrentProject} (copy)`
-                : "(copy)",
-            };
-            // 3) create new
+            // Only copy people fields + CurrentProject
+            const payload = { ...rest };
             const r = await fetch(`${API_BASE}/items`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -269,8 +326,11 @@ const PeopleGrid = () => {
             if (!r.ok) throw new Error(`Copy failed: ${r.status}`);
             const saved = await r.json();
             const newRow = docToRow(saved);
-            // 4) show on top
             setRows((prev) => [newRow, ...prev]);
+            if (payload.CurrentProject) {
+              const poDoc = await fetchPOByPO(payload.CurrentProject);
+              setPoMap((m) => ({ ...m, ...(poDoc?.PO ? { [poDoc.PO]: poDoc } : {}) }));
+            }
           } catch (e) {
             console.error(e);
             alert("Copy failed.");
@@ -299,11 +359,12 @@ const PeopleGrid = () => {
         );
       },
     },
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [vgFromPO, vgDateFromPO]);
 
   const defaultColDef = useMemo(
     () => ({
-      editable: true,
+      editable: true,          // default; derived cols are read-only via valueGetter
       filter: true,
       sortable: true,
       resizable: true,
@@ -318,9 +379,11 @@ const PeopleGrid = () => {
   // Modal form state
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm());
+  const [poPreview, setPoPreview] = useState(null);
 
   const openForm = () => {
     setForm(emptyForm());
+    setPoPreview(null);
     setShowForm(true);
   };
   const closeForm = () => setShowForm(false);
@@ -340,7 +403,7 @@ const PeopleGrid = () => {
     setForm((f) => ({ ...f, [name]: value === "" ? "" : Number(value) }));
   };
 
-  // Live create
+  // Create (stores only people fields + CurrentProject)
   const saveRow = async () => {
     try {
       const payload = { ...form };
@@ -354,13 +417,19 @@ const PeopleGrid = () => {
       const newRow = docToRow(saved);
       setRows((prev) => [newRow, ...prev]); // show on top
       setShowForm(false);
+
+      // Ensure poMap has this PO (best-effort)
+      if (payload.CurrentProject) {
+        const poDoc = await fetchPOByPO(payload.CurrentProject);
+        setPoMap((m) => ({ ...m, ...(poDoc?.PO ? { [poDoc.PO]: poDoc } : {}) }));
+      }
     } catch (err) {
       console.error(err);
       alert("Create failed.");
     }
   };
 
-  // Live inline update
+  // Inline update; when CurrentProject changes, refresh poMap entry
   const onCellValueChanged = async (params) => {
     const { data, colDef, newValue, oldValue } = params;
     if (newValue === oldValue) return;
@@ -368,17 +437,43 @@ const PeopleGrid = () => {
     if (!data?.id || !field) return;
 
     try {
-      const r = await fetch(`${API_BASE}/items/${encodeURIComponent(data.id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: newValue }),
+      if (field !== "CurrentProject") {
+        const r = await fetch(`${API_BASE}/items/${encodeURIComponent(data.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [field]: newValue }),
+        });
+        if (!r.ok) throw new Error(`Patch failed: ${r.status}`);
+        const saved = await r.json();
+        const updated = docToRow(saved);
+        setRows((prev) =>
+          prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
+        );
+        return;
+      }
+
+      // CurrentProject changed: patch only that field, then refresh that PO in cache
+      {
+        const r = await fetch(`${API_BASE}/items/${encodeURIComponent(data.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ CurrentProject: newValue }),
+        });
+        if (!r.ok) throw new Error(`Patch failed: ${r.status}`);
+        const saved = await r.json();
+        const updated = docToRow(saved);
+        setRows((prev) =>
+          prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
+        );
+      }
+
+      const poDoc = await fetchPOByPO(newValue); // safe (no-throw)
+      setPoMap((m) => {
+        const copy = { ...m };
+        if (poDoc?.PO) copy[poDoc.PO] = poDoc;
+        return copy;
       });
-      if (!r.ok) throw new Error(`Patch failed: ${r.status}`);
-      const saved = await r.json();
-      const updated = docToRow(saved);
-      setRows((prev) =>
-        prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
-      );
+
     } catch (e) {
       console.error(e);
       alert("Update failed. Reverting cell.");
@@ -390,11 +485,11 @@ const PeopleGrid = () => {
     <div style={containerStyle}>
       <header style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <button className="btn" onClick={openForm}>Add New</button>
-        <button className="btn" onClick={loadRows} disabled={loading}>
-          {loading ? "Loading…" : "Reload"}
+        <button className="btn" onClick={loadRows} disabled={loading || loadingPOs}>
+          {loading || loadingPOs ? "Loading…" : "Reload"}
         </button>
         <span style={{ marginLeft: "auto", opacity: 0.75, fontSize: 12 }}>
-          API: {API_BASE}
+          API: {API_BASE} | PO API: {PO_API_BASE}
         </span>
       </header>
 
@@ -403,7 +498,7 @@ const PeopleGrid = () => {
         <div className="modal-backdrop" onClick={closeForm}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>Add New Row</h3>
+              <h3 style={{ margin: 0 }}>Add New Person</h3>
               <button className="btn btn-ghost" onClick={closeForm} aria-label="Close">✕</button>
             </div>
 
@@ -435,14 +530,41 @@ const PeopleGrid = () => {
               <label><div>Project/Role</div><input name="ProjectRole" value={form.ProjectRole} onChange={onField} /></label>
               <label><div>First Day FO</div><input name="FirstDayFO" value={form.FirstDayFO} onChange={onField} placeholder="MM/DD/YYYY" /></label>
               <label><div>Prj. Start</div><input name="PrjStart" value={form.PrjStart} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>Current PO End</div><input name="CurrentPOEnd" value={form.CurrentPOEnd} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>Supplier</div><input name="Supplier" value={form.Supplier} onChange={onField} /></label>
-              <label><div>Last Day FO (Term in PP)</div><input name="LastDayFO" value={form.LastDayFO} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>Current Project</div><input name="CurrentProject" value={form.CurrentProject} onChange={onField} /></label>
 
-              <label><div>Hrly Bill Rate</div><input type="number" name="HrlyBillRate" value={form.HrlyBillRate} onChange={onNumber} /></label>
-              <label><div>Pay Reviewed Date</div><input name="PayReviewedDate" value={form.PayReviewedDate} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>Projected Prj End</div><input name="ProjectedPrjEnd" value={form.ProjectedPrjEnd} onChange={onField} placeholder="MM/DD/YYYY" /></label>
+              {/* The only stored PO-ref on People */}
+              <label>
+                <div>Current Project (PO #)</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    name="CurrentProject"
+                    value={form.CurrentProject}
+                    onChange={onField}
+                    onBlur={async () => {
+                      if (!form.CurrentProject) { setPoPreview(null); return; }
+                      const poDoc = await fetchPOByPO(form.CurrentProject);
+                      setPoPreview(poDoc || null);
+                    }}
+                    placeholder="Enter PO number"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={async () => {
+                      if (!form.CurrentProject) {
+                        alert("Enter a Current Project (PO) first.");
+                        return;
+                      }
+                      const poDoc = await fetchPOByPO(form.CurrentProject);
+                      setPoPreview(poDoc || null);
+                    }}
+                  >
+                    Preview from PO
+                  </button>
+                </div>
+              </label>
+
+              <label><div>Last Day FO (Term in PP)</div><input name="LastDayFO" value={form.LastDayFO} onChange={onField} placeholder="MM/DD/YYYY" /></label>
 
               <label><div>N?</div>
                 <select name="N" value={form.N} onChange={onField}>
@@ -451,13 +573,22 @@ const PeopleGrid = () => {
               </label>
 
               <label><div>18 Month date</div><input name="EighteenMonthDate" value={form.EighteenMonthDate} onChange={onField} placeholder="MM/DD/YYYY" /></label>
-              <label><div>Current PO Balance</div><input type="number" name="CurrentPOBalance" value={form.CurrentPOBalance} onChange={onNumber} /></label>
               <label><div>Billed Thru…</div><input name="BilledThru" value={form.BilledThru} onChange={onField} placeholder="MM/DD/YYYY" /></label>
               <label><div>Wks remaininig</div><input type="number" name="WksRemaining" value={form.WksRemaining} onChange={onNumber} /></label>
-              <label><div>PO Hrly Bill Rate</div><input type="number" name="POHrlyBillRate" value={form.POHrlyBillRate} onChange={onNumber} /></label>
-              <label><div>Weekly rate</div><input type="number" name="WeeklyRate" value={form.WeeklyRate} onChange={onNumber} /></label>
-              <label><div>GL</div><input name="GL" value={form.GL} onChange={onField} /></label>
-              <label><div>GTL</div><input name="GTL" value={form.GTL} onChange={onField} /></label>
+            </div>
+
+            {/* Read-only preview from PO */}
+            <div style={{ marginTop: 12, paddingTop: 8, borderTop: "1px solid #e5e7eb" }}>
+              <h4 style={{ margin: "0 0 8px 0" }}>PO Details (derived)</h4>
+              <div className="grid2">
+                <label><div>Supplier</div><input value={poPreview?.Supplier ?? "—"} readOnly /></label>
+                <label><div>Current PO End</div><input value={toMDY(poPreview?.ProjectEnd) || "—"} readOnly /></label>
+                <label><div>GL</div><input value={poPreview?.GL ?? "—"} readOnly /></label>
+                <label><div>GTL</div><input value={poPreview?.GTL ?? "—"} readOnly /></label>
+                <label><div>PO Hrly Bill Rate</div><input value={poPreview?.POHrlyBillRate ?? "—"} readOnly /></label>
+                <label><div>PR Hrly Bill Rate</div><input value={poPreview?.PRHrlyBillRate ?? "—"} readOnly /></label>
+                <label><div>PR Wkly Rate</div><input value={poPreview?.PRWklyRate ?? "—"} readOnly /></label>
+              </div>
             </div>
 
             <div className="modal-actions">
@@ -477,8 +608,7 @@ const PeopleGrid = () => {
           defaultColDef={defaultColDef}
           getRowId={getRowId}
           theme={theme}
-          animateRows={true}
-          // (no rowClassRules here; your new schema doesn’t have PRStatus)
+          animateRows
           onCellValueChanged={onCellValueChanged}
         />
       </div>
@@ -491,8 +621,10 @@ const PeopleGrid = () => {
         }
         * { box-sizing: border-box; }
         html, body, #root { height: 100%; margin: 0; }
-        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
-               color: #0b254b; background: #f3f7ff; }
+        body {
+          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+          color: #0b254b; background: #f3f7ff;
+        }
 
         header .btn { margin-right: 6px; }
 
@@ -511,50 +643,22 @@ const PeopleGrid = () => {
         .btn-primary { background: var(--fc); color: #fff; border-color: transparent; }
         .btn-ghost { background: transparent; border-color: transparent; }
 
-        .actions-wrap {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          width: 100%;
-        }
+        .actions-wrap { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; }
         .icon-btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 20px;
-          height: 20px;
-          padding: 0;
-          border: 1px solid rgba(0,0,0,0.12);
-          border-radius: 6px;
-          background: #fff;
-          line-height: 1;
-          font-size: 12px;
-          cursor: pointer;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 20px; height: 20px; padding: 0;
+          border: 1px solid rgba(0,0,0,0.12); border-radius: 6px; background: #fff;
+          line-height: 1; font-size: 12px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.06);
         }
         .icon-btn-danger { color: #b3261e; border-color: #f0c9c7; }
         .icon-btn-danger:hover { background: #ffecec; }
         .icon-btn-neutral { color: #0b254b; border-color: #d3dbe7; }
         .icon-btn-neutral:hover { background: #edf3ff; }
 
-        .grid2 {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
-        }
-        label > div {
-          font-size: 12px;
-          color: #4c596b;
-          margin-bottom: 4px;
-        }
+        .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        label > div { font-size: 12px; color: #4c596b; margin-bottom: 4px; }
         input, select {
-          width: 100%;
-          padding: 8px 10px;
-          border: 1px solid #cbd5e1;
-          border-radius: 8px;
-          background: #fff;
-          outline: none;
+          width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; outline: none;
         }
         input:focus, select:focus { border-color: var(--fc); box-shadow: 0 0 0 3px rgba(14,68,145,0.12); }
 
@@ -588,7 +692,5 @@ const PeopleGrid = () => {
     </div>
   );
 };
+
 export default PeopleGrid;
-
-
-
