@@ -54,6 +54,25 @@ const toMDY = (v) => {
   return String(v);
 };
 
+/** ====== CURRENCY HELPERS ====== */
+const formatUSD = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n)
+    ? n.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : "";
+};
+const parseUSD = (v) => {
+  if (v === null || v === undefined) return null;
+  const s = String(v).replace(/[^0-9.-]/g, "");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+};
+
 /** ====== DEFAULTS (fields aligned to your new column set) ====== */
 /*
   Field mapping:
@@ -75,7 +94,7 @@ const toMDY = (v) => {
   - Project End                                  -> ProjectEnd (date)
   - wkEnd                                        -> WkEnd (date)
   - PR Number                                    -> PRNumber
-  - PR Status (...)                              -> PRStatus  [TBD, PENDING QUOTE, SUBMITTED, APPROVED, RECEIVING, FULLY RECEIVED, EXPIRED, CANCELLED]
+  - PR Status (...)                              -> PRStatus
   - PO (pending)                                 -> PO
   - PO Man Wks                                   -> POManWks (number)
   - PR Amount                                    -> PRAmount (number)
@@ -286,7 +305,7 @@ const POsGrid = () => {
     loadRows();
   }, [loadRows]);
 
-  /** ====== COLUMNS (replaced with your new set) ====== */
+  /** ====== COLUMNS (your new set, with currency formatting) ====== */
   const [columnDefs] = useState([
     { headerName: "ID", field: "id", hide: true },
 
@@ -333,9 +352,34 @@ const POsGrid = () => {
     { headerName: "PO (pending)", field: "PO", minWidth: 140 },
 
     { headerName: "PO Man Wks", field: "POManWks", type: "numericColumn", minWidth: 140 },
-    { headerName: "PR Amount", field: "PRAmount", type: "numericColumn", minWidth: 140 },
-    { headerName: "PR Wkly Rate", field: "PRWklyRate", type: "numericColumn", minWidth: 140 },
-    { headerName: "PR Hrly Bill Rate", field: "PRHrlyBillRate", type: "numericColumn", minWidth: 160 },
+
+    {
+      headerName: "PR Amount",
+      field: "PRAmount",
+      type: "numericColumn",
+      minWidth: 140,
+      cellClass: "ag-right-aligned-cell",
+      valueFormatter: ({ value }) => formatUSD(value),
+      valueParser: (p) => parseUSD(p.newValue),
+    },
+    {
+      headerName: "PR Wkly Rate",
+      field: "PRWklyRate",
+      type: "numericColumn",
+      minWidth: 140,
+      cellClass: "ag-right-aligned-cell",
+      valueFormatter: ({ value }) => formatUSD(value),
+      valueParser: (p) => parseUSD(p.newValue),
+    },
+    {
+      headerName: "PR Hrly Bill Rate",
+      field: "PRHrlyBillRate",
+      type: "numericColumn",
+      minWidth: 160,
+      cellClass: "ag-right-aligned-cell",
+      valueFormatter: ({ value }) => formatUSD(value),
+      valueParser: (p) => parseUSD(p.newValue),
+    },
 
     // Actions
     {
@@ -700,6 +744,8 @@ const POsGrid = () => {
           padding: 4px 6px;
           font-size: 14px;
         }
+
+        .ag-right-aligned-cell { text-align: right; }
 
         .modal-backdrop {
           position: fixed; inset: 0; background: rgba(0,0,0,0.35);
