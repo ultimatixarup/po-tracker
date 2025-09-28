@@ -1,3 +1,4 @@
+// index.jsx
 "use client";
 
 import React, { StrictMode, useMemo, useState } from "react";
@@ -14,12 +15,18 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
-// Two grids (separate files)
-import PeopleGrid from "./PeopleGrid";
+// Grids (separate files)
 import POsGrid from "./POsGrid";
+import PeopleGrid from "./PeopleGrid";
+// Excel importer (the dual-tab importer you built earlier)
+import ExcelImportDual from "./ExcelImportDual";
 
 // Config
 const API_BASE = import.meta.env?.VITE_API_BASE || "http://localhost:5902";
+
+// Bulk endpoints for Excel importer
+const PO_BULK_URL = `${API_BASE}/db/po_db/items/_bulk`;
+const PEOPLE_BULK_URL = `${API_BASE}/db/po_db/items/_bulk`;
 
 // Shared theme instance
 const myTheme = themeQuartz.withParams({
@@ -31,7 +38,7 @@ const myTheme = themeQuartz.withParams({
 });
 
 function App() {
-  const [tab, setTab] = useState("people");
+  const [tab, setTab] = useState("people"); // "people" | "pos" | "excel"
   const theme = useMemo(() => myTheme, []);
 
   return (
@@ -43,6 +50,12 @@ function App() {
 
       {/* Tabs */}
       <div className="tabs">
+        <button
+          className={`tab ${tab === "excel" ? "active" : ""}`}
+          onClick={() => setTab("excel")}
+        >
+          Upload Excel
+        </button>
         <button
           className={`tab ${tab === "people" ? "active" : ""}`}
           onClick={() => setTab("people")}
@@ -58,7 +71,13 @@ function App() {
       </div>
 
       <div className="tab-panel">
-        {tab === "people" ? (
+        {tab === "excel" ? (
+          <ExcelImportDual
+            poBulkUrl={PO_BULK_URL}
+            peopleBulkUrl={PEOPLE_BULK_URL}
+            chunkSize={500}
+          />
+        ) : tab === "people" ? (
           <PeopleGrid apiBase={API_BASE} theme={theme} />
         ) : (
           <POsGrid apiBase={API_BASE} theme={theme} />

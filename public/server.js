@@ -1,4 +1,4 @@
-// server.js (Node 16 compatible, multi-DB per request)
+// server.js (Node 16 compatible, multi-DB per request, excludes design docs on GETs)
 
 const express = require("express");
 const cors = require("cors");
@@ -87,6 +87,19 @@ function bindDbFromRequest(req, res, next) {
   }
 }
 
+// Utility: should we include design docs for this request?
+function wantIncludeDesign(req) {
+  const v = req.query.include_design ?? req.query.includeDesign;
+  // treat 'true', '1', true as opt-in
+  return v === true || v === "true" || v === "1";
+}
+
+// Utility: filter out design and deleted docs
+function filterOutDesignAndDeleted(docs, includeDesign) {
+  if (includeDesign) return docs.filter(d => d && !d._deleted);
+  return docs.filter(d => d && !d._deleted && !(d._id || "").startsWith("_design/"));
+}
+
 // ----- Health checks -----
 app.get("/health", (req, res) => {
   // Generic health; doesn’t touch a DB
@@ -119,11 +132,19 @@ router.post("/items", async (req, res) => {
   }
 });
 
-// Read one
+// Read one (hide design docs unless include_design=true)
 router.get("/items/:id", async (req, res) => {
   const db = req.db;
   try {
-    const doc = await db.get(req.params.id);
+    const id = req.params.id;
+    const includeDesign = wantIncludeDesign(req);
+    if (!includeDesign && (id || "").startsWith("_design/")) {
+      return httpError(res, 404, "Not found");
+    }
+    const doc = await db.get(id);
+    if (!includeDesign && (doc._id || "").startsWith("_design/")) {
+      return httpError(res, 404, "Not found");
+    }
     res.json(doc);
   } catch (err) {
     if (err && err.status === 404) return httpError(res, 404, "Not found", err);
@@ -179,34 +200,45 @@ router.delete("/items/:id", async (req, res) => {
   }
 });
 
-// List (with pagination)
+// List (with pagination) — exclude design docs by default
 router.get("/items", async (req, res) => {
   const db = req.db;
+  const includeDesign = wantIncludeDesign(req);
   try {
     const limit = Math.min(parseInt((req.query && req.query.limit) || "25", 10), 200);
     const skip = parseInt((req.query && req.query.skip) || "0", 10);
+
     const result = await db.allDocs({ include_docs: true, limit, skip });
+    const docs = result.rows.map(r => r.doc);
+    const filtered = filterOutDesignAndDeleted(docs, includeDesign);
+
+    // Note: total/offset from allDocs are for the unfiltered set.
+    // We report filtered counts for clarity.
     res.json({
-      total: result.total_rows,
-      offset: result.offset,
-      rows: result.rows.map((r) => r.doc),
+      total: filtered.length,
+      offset: skip,
+      rows: filtered,
+      include_design: !!includeDesign
     });
   } catch (err) {
     return httpError(res, 400, "Failed to list", err);
   }
 });
 
-// Mango query
+// Mango query — post-filter design docs unless include_design=true
 router.post("/items/_find", async (req, res) => {
   const db = req.db;
+  const includeDesign = wantIncludeDesign(req);
   try {
     const payload = req.body || {};
     const selector = payload.selector || {};
     const limit = payload.limit || 25;
     const skip = payload.skip || 0;
     const sort = payload.sort;
+
     const result = await db.find({ selector, limit, skip, sort });
-    res.json(result.docs);
+    const filtered = filterOutDesignAndDeleted(result.docs || [], includeDesign);
+    res.json(filtered);
   } catch (err) {
     return httpError(res, 400, "Query failed", err);
   }
@@ -244,6 +276,7 @@ app.listen(PORT, function () {
     `PouchDB REST API listening on http://localhost:${PORT}\n` +
     `- default DB: ${DEFAULT_DB}\n` +
     `- usage (path):   GET /db/{db}/items\n` +
-    `- usage (query):  GET /items?db={db}\n`
+    `- usage (query):  GET /items?db={db}\n` +
+    `- tip: pass ?include_design=true to include _design docs in GETs\n`
   );
 });
