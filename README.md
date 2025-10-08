@@ -17,19 +17,19 @@ This codebase implements a New Business Intake (NBI) / matter‑opening toolkit 
 
 ```mermaid
 flowchart LR
-  A[User Browser]\n(ASP.NET WebForms pages) --> B[Code-behind / Business helpers\n`Common`, `k2itemdata`]
-  B --> C[(SQL Server DBs)\nCMSOPEN / LBMS / eMatters / up / eskort_kdw / sp19]
-  B --> D[K2 Workflow Server]
-  B --> E[SMTP Server]
-  B --> F[Filesystem IO]
-  B --> G[ConfigurationManager\nAppSettings + ConnectionStrings]
+  A["User Browser<br/>(ASP.NET WebForms pages)"] --> B["Code-behind / Business helpers<br/>Common, k2itemdata"]
+  B --> C["(SQL Server DBs)<br/>CMSOPEN / LBMS / eMatters / up / eskort_kdw / sp19"]
+  B --> D["K2 Workflow Server"]
+  B --> E["SMTP Server"]
+  B --> F["Filesystem IO"]
+  B --> G["ConfigurationManager<br/>AppSettings + ConnectionStrings"]
 ```
 
 ### Key Components
 
 * **Web UI (WebForms):** Pages and controls (code-behind not included here) call helper methods in `Common`.
-* **Business Helpers (**``**):** Large static utility surface: validation, CRUD using ADO.NET, search logs, party management, notification composition/sending, and K2 hand-offs.
-* **Workflow (**``**):** Data structure(s) for K2 payloads; interaction helpers tying intake records to workflow instances.
+* **Business Helpers (`Common`):*** Large static utility surface: validation, CRUD using ADO.NET, search logs, party management, notification composition/sending, and K2 hand-offs.
+* **Workflow (`k2itemdata`):*** Data structure(s) for K2 payloads; interaction helpers tying intake records to workflow instances.
 * **Data Access:** Raw ADO.NET (`SqlConnection`, `SqlCommand`, `SqlDataAdapter`), a mixture of inline SQL and stored procedures.
 * **Notifications:** `System.Net.Mail` constructs `MailMessage` and uses `SmtpClient(smtpserver, port)` to deliver.
 
@@ -140,7 +140,7 @@ This section lists the external systems the code interacts with and the expected
 
 ### 6.5 Configuration
 
-* `` used extensively for flags, template paths, email lists, and feature toggles.
+* `ConfigurationManager.AppSettings[...]` used extensively for flags, template paths, email lists, and feature toggles.
 * **Notable keys (examples):** `k2server`, `k2user`, `k2pwd`, various committee email lists, and other functional switches.
 
 ## 7) Validation Rules (Examples)
