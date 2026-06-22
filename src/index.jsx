@@ -16,6 +16,7 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { useFetchJson } from "./useFetchJson";
+import PenaltyGame from "./PenaltyGame";
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
@@ -576,9 +577,46 @@ const toYMD = (v) => {
   );
 };
 
+const NAV_STYLE = {
+  display: "flex",
+  gap: 4,
+  padding: "8px 12px",
+  background: "#0e2a4a",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+};
+
+const tabBtn = (active) => ({
+  padding: "7px 18px",
+  borderRadius: 6,
+  border: "none",
+  background: active ? "#fff" : "transparent",
+  color: active ? "#0e2a4a" : "rgba(255,255,255,0.75)",
+  fontWeight: active ? 700 : 400,
+  fontSize: 14,
+  cursor: "pointer",
+  transition: "background 0.15s, color 0.15s",
+});
+
+function App() {
+  const [tab, setTab] = React.useState("tracker");
+  return (
+    <div>
+      <div style={NAV_STYLE}>
+        <button style={tabBtn(tab === "tracker")} onClick={() => setTab("tracker")}>
+          📋 PO Tracker
+        </button>
+        <button style={tabBtn(tab === "game")} onClick={() => setTab("game")}>
+          ⚽ Penalty Shootout
+        </button>
+      </div>
+      {tab === "tracker" ? <GridExample /> : <PenaltyGame />}
+    </div>
+  );
+}
+
 const root = createRoot(document.getElementById("root"));
 root.render(
   <StrictMode>
-    <GridExample />
+    <App />
   </StrictMode>
 );
