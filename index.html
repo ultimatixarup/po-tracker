@@ -1,12 +1,465 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AG Grid + Vite + React</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/index.jsx"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kat's Horsepower — Ranch &amp; Equine Consulting</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root{
+    --hide: #3a2c20;       /* saddle leather */
+    --hide-dark: #261c14;
+    --dust: #cdb89a;       /* dust/sand */
+    --paper: #f4ede1;      /* aged paper */
+    --sage: #7c8463;       /* range sage */
+    --brass: #b9803e;      /* brass accent */
+    --ink: #211a13;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+  }
+  h1, h2, h3{
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .mono{
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  a{ color: inherit; }
+  img{ max-width:100%; display:block; }
+
+  /* ---- NAV ---- */
+  nav{
+    position: sticky; top:0; z-index: 50;
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 18px 6vw;
+    background: rgba(244,237,225,0.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid rgba(38,28,20,0.12);
+  }
+  .logo{
+    font-family:'Fraunces', serif;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .logo span{ color: var(--brass); }
+  nav .links{ display:flex; gap: 28px; font-size: 13px; }
+  nav .links a{
+    text-decoration:none;
+    font-family:'JetBrains Mono', monospace;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color: var(--hide);
+    border-bottom: 1px solid transparent;
+    padding-bottom: 2px;
+    transition: border-color 0.2s;
+  }
+  nav .links a:hover{ border-color: var(--brass); }
+  @media (max-width:720px){ nav .links{ display:none; } }
+
+  /* ---- HERO ---- */
+  .hero{
+    position: relative;
+    min-height: 88vh;
+    display:flex; flex-direction:column; justify-content:center;
+    padding: 0 6vw;
+    overflow:hidden;
+    background:
+      radial-gradient(circle at 85% 15%, rgba(185,128,62,0.18), transparent 45%),
+      var(--paper);
+  }
+  .hero .brand-mark{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--sage);
+    margin-bottom: 22px;
+    display:flex; align-items:center; gap: 10px;
+  }
+  .hero .brand-mark::before{
+    content:"";
+    width: 28px; height:1px;
+    background: var(--sage);
+  }
+  .hero h1{
+    font-size: clamp(46px, 9vw, 108px);
+    line-height: 0.95;
+    color: var(--hide-dark);
+  }
+  .hero h1 em{
+    font-style: normal;
+    color: var(--brass);
+  }
+  .hero .sub{
+    margin-top: 26px;
+    max-width: 540px;
+    font-size: 18px;
+    color: #4a3c2d;
+  }
+  .hero .cta-row{
+    margin-top: 38px;
+    display:flex; gap: 16px; flex-wrap:wrap; align-items:center;
+  }
+  .btn{
+    display:inline-block;
+    padding: 14px 28px;
+    background: var(--hide-dark);
+    color: var(--paper);
+    text-decoration:none;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 2px;
+    transition: background 0.2s;
+  }
+  .btn:hover{ background: var(--brass); }
+  .btn.ghost{
+    background: transparent;
+    border: 1px solid var(--hide-dark);
+    color: var(--hide-dark);
+  }
+  .btn.ghost:hover{ border-color: var(--brass); color: var(--brass); }
+
+  .hero .tally{
+    position:absolute;
+    right: 6vw; bottom: 60px;
+    display:flex; gap: 36px;
+  }
+  @media (max-width: 880px){ .hero .tally{ position:static; margin-top:50px; } }
+  .tally .item{ }
+  .tally .num{
+    font-family:'Fraunces', serif;
+    font-size: 34px;
+    color: var(--hide-dark);
+  }
+  .tally .label{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--sage);
+  }
+
+  /* divider brand bar */
+  .brand-strip{
+    background: var(--hide-dark);
+    color: var(--dust);
+    padding: 10px 6vw;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display:flex; justify-content:space-between;
+    overflow:hidden; white-space:nowrap;
+  }
+
+  /* ---- SECTIONS ---- */
+  section{ padding: 110px 6vw; }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--brass);
+    margin-bottom: 14px;
+  }
+  .section-head{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    gap: 30px; margin-bottom: 56px; flex-wrap:wrap;
+  }
+  .section-head h2{ font-size: clamp(30px, 4vw, 46px); color: var(--hide-dark); }
+  .section-head p{ max-width: 380px; color:#4a3c2d; font-size:15px; }
+
+  /* ---- ABOUT ---- */
+  .about-grid{
+    display:grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 70px;
+    align-items: start;
+  }
+  @media (max-width:880px){ .about-grid{ grid-template-columns: 1fr; } }
+  .about-grid .lead{
+    font-family:'Fraunces', serif;
+    font-size: 26px;
+    line-height: 1.4;
+    color: var(--hide-dark);
+  }
+  .about-grid .body p{ margin-bottom: 18px; color:#3e3122; }
+  .skill-tags{ display:flex; flex-wrap:wrap; gap:10px; margin-top: 24px; }
+  .skill-tags span{
+    border:1px solid rgba(38,28,20,0.25);
+    padding: 7px 14px;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-radius: 2px;
+  }
+
+  /* ---- SERVICES (numbered, real sequence of an engagement) ---- */
+  .services{ background: var(--hide-dark); color: var(--paper); }
+  .services .eyebrow{ color: var(--dust); }
+  .services .section-head h2{ color: var(--paper); }
+  .services .section-head p{ color: var(--dust); }
+  .service-list{ border-top: 1px solid rgba(244,237,225,0.18); }
+  .service-row{
+    display:grid;
+    grid-template-columns: 90px 1fr 1.4fr;
+    gap: 30px;
+    padding: 34px 0;
+    border-bottom: 1px solid rgba(244,237,225,0.18);
+    align-items: start;
+  }
+  @media (max-width:780px){ .service-row{ grid-template-columns: 50px 1fr; } .service-row .desc{ grid-column: 1 / -1; } }
+  .service-row .step{
+    font-family:'Fraunces', serif;
+    font-size: 30px;
+    color: var(--brass);
+  }
+  .service-row h3{ font-size: 22px; color: var(--paper); }
+  .service-row .desc{ color: var(--dust); font-size: 15px; }
+
+  /* ---- NETWORK ---- */
+  .network-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+    gap: 1px;
+    background: rgba(38,28,20,0.18);
+    border: 1px solid rgba(38,28,20,0.18);
+  }
+  .network-card{
+    background: var(--paper);
+    padding: 30px 26px;
+  }
+  .network-card .mono{ font-size: 11px; color: var(--sage); margin-bottom: 10px; display:block; }
+  .network-card h3{ font-size: 19px; margin-bottom: 10px; color: var(--hide-dark); }
+  .network-card p{ font-size: 14px; color: #4a3c2d; }
+
+  /* ---- PROCESS / TIMELINE SIGNATURE ---- */
+  .ledger{
+    background: var(--dust);
+  }
+  .ledger-table{
+    width:100%;
+    border-collapse: collapse;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+  .ledger-table th{
+    text-align:left;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    font-size: 11px;
+    color: var(--hide-dark);
+    border-bottom: 1px solid var(--hide-dark);
+    padding-bottom: 12px;
+  }
+  .ledger-table td{
+    padding: 16px 10px 16px 0;
+    border-bottom: 1px solid rgba(38,28,20,0.25);
+    color: var(--hide-dark);
+    vertical-align: top;
+  }
+  .ledger-table tr td:first-child{ width: 90px; color: var(--brass); font-weight:600; }
+
+  /* ---- CTA ---- */
+  .contact{
+    text-align:center;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(185,128,62,0.18), transparent 55%),
+      var(--paper);
+  }
+  .contact h2{ font-size: clamp(34px,6vw,64px); color: var(--hide-dark); }
+  .contact p{ max-width: 480px; margin: 18px auto 36px; color:#4a3c2d; }
+
+  footer{
+    padding: 30px 6vw;
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:14px;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sage);
+    border-top: 1px solid rgba(38,28,20,0.15);
+  }
+
+  @media (prefers-reduced-motion: reduce){ html{ scroll-behavior:auto; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Kat's <span>Horsepower</span></div>
+  <div class="links">
+    <a href="#about">About</a>
+    <a href="#services">Services</a>
+    <a href="#network">Network</a>
+    <a href="#process">Process</a>
+    <a href="#contact">Contact</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="brand-mark">Ranch &amp; Equine Consulting</div>
+  <h1>Built on<br><em>hoof and</em><br>hard ground.</h1>
+  <p class="sub">Kat plans, builds, and runs working ranches — and the horse operations inside them. From bare land to a functioning facility, she carries the project and the people who make it real.</p>
+  <div class="cta-row">
+    <a class="btn" href="#contact">Start a project</a>
+    <a class="btn ghost" href="#services">See the work</a>
+  </div>
+  <div class="tally">
+    <div class="item"><div class="num">14+</div><div class="label">Years in the field</div></div>
+    <div class="item"><div class="num">30+</div><div class="label">Ranches advised</div></div>
+    <div class="item"><div class="num">60+</div><div class="label">Trusted contractors</div></div>
+  </div>
+</header>
+
+<div class="brand-strip">
+  <span>RANCH PLANNING — FACILITY BUILD-OUT — HERD &amp; BARN MANAGEMENT — VENDOR NETWORK — PROJECT OVERSIGHT — RANCH PLANNING — FACILITY BUILD-OUT</span>
+</div>
+
+<section id="about">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">About Kat</div>
+      <h2>A consultant who's<br>actually run the place.</h2>
+    </div>
+    <p>Not theory. Kat has built ranches from raw acreage and managed them day to day — she knows where plans break in practice.</p>
+  </div>
+  <div class="about-grid">
+    <div class="lead">"Most ranch projects don't fail on vision. They fail on sequencing, on who actually shows up, and on details nobody budgeted for."</div>
+    <div class="body">
+      <p>Kat has spent her career on both sides of the fence line: as a horsewoman managing daily operations, and as the person who plans and stands up a ranch from the ground floor — site layout, fencing and footing, barns and arenas, water and pasture rotation, and the herd management systems that keep it all running once the dust settles.</p>
+      <p>She works directly with owners as a project lead, translating a vision into a buildable plan and then staying on through execution — coordinating the contractors, vets, farriers, and feed suppliers who actually get the work done.</p>
+      <div class="skill-tags">
+        <span>Site &amp; Facility Planning</span>
+        <span>Herd Management</span>
+        <span>Vendor Coordination</span>
+        <span>Pasture &amp; Water Systems</span>
+        <span>Operations Setup</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="services" id="services">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">How an engagement runs</div>
+      <h2>From bare land<br>to running ranch.</h2>
+    </div>
+    <p>Every project moves through the same four stages — Kat stays on through all of them.</p>
+  </div>
+  <div class="service-list">
+    <div class="service-row">
+      <div class="step">01</div>
+      <h3>Assess &amp; Plan</h3>
+      <div class="desc">Walk the land, evaluate existing structures, and build a phased plan for layout, fencing, footing, water, and herd capacity.</div>
+    </div>
+    <div class="service-row">
+      <div class="step">02</div>
+      <h3>Build the Network</h3>
+      <div class="desc">Bring in the right contractors, farriers, vets, and feed and equipment suppliers from Kat's vetted network — matched to the project's scale and budget.</div>
+    </div>
+    <div class="service-row">
+      <div class="step">03</div>
+      <h3>Manage Construction</h3>
+      <div class="desc">Run point on the build: scheduling, site visits, and quality checks, so owners get one accountable contact instead of a dozen subcontractors.</div>
+    </div>
+    <div class="service-row">
+      <div class="step">04</div>
+      <h3>Operate &amp; Hand Off</h3>
+      <div class="desc">Stand up daily operating systems — feeding, turnout, herd health routines — and train staff until the ranch runs without her in the room.</div>
+    </div>
+  </div>
+</section>
+
+<section id="network">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">The network</div>
+      <h2>A ranch is only as<br>good as its people.</h2>
+    </div>
+    <p>Years in the industry built a bench of people Kat trusts with her own clients' projects.</p>
+  </div>
+  <div class="network-grid">
+    <div class="network-card">
+      <span class="mono">Construction</span>
+      <h3>Builders &amp; Fencers</h3>
+      <p>Barn, arena, and fencing crews experienced specifically in equine facilities, not general agriculture.</p>
+    </div>
+    <div class="network-card">
+      <span class="mono">Animal Health</span>
+      <h3>Vets &amp; Farriers</h3>
+      <p>A rotation of large-animal vets and farriers for routine care and emergency response.</p>
+    </div>
+    <div class="network-card">
+      <span class="mono">Land &amp; Water</span>
+      <h3>Excavation &amp; Irrigation</h3>
+      <p>Specialists in grading, drainage, and pasture irrigation suited to horse traffic and footing needs.</p>
+    </div>
+    <div class="network-card">
+      <span class="mono">Supply</span>
+      <h3>Feed &amp; Equipment</h3>
+      <p>Reliable suppliers for feed, tack, and arena equipment, negotiated at ranch-scale pricing.</p>
+    </div>
+    <div class="network-card">
+      <span class="mono">Staffing</span>
+      <h3>Hands &amp; Trainers</h3>
+      <p>Vetted ranch hands and trainers for owners who need staff in place before opening day.</p>
+    </div>
+    <div class="network-card">
+      <span class="mono">Oversight</span>
+      <h3>Project Management</h3>
+      <p>Kat herself, coordinating every party above so the owner has one phone call to make.</p>
+    </div>
+  </div>
+</section>
+
+<section class="ledger" id="process">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">A typical timeline</div>
+      <h2>Ground-up ranch build</h2>
+    </div>
+    <p>Timelines flex with scope, weather, and permitting — this is a representative pace.</p>
+  </div>
+  <table class="ledger-table">
+    <thead>
+      <tr><th>Phase</th><th>Stage</th><th>What happens</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Wk 1–2</td><td>Site Assessment</td><td>Land walk, soil and water evaluation, herd capacity study, draft master plan.</td></tr>
+      <tr><td>Wk 3–4</td><td>Vendor Sourcing</td><td>Bids gathered from Kat's network, contracts negotiated, schedule locked.</td></tr>
+      <tr><td>Mo 2–4</td><td>Infrastructure</td><td>Fencing, footing, water lines, and core structures go in.</td></tr>
+      <tr><td>Mo 4–5</td><td>Barn &amp; Facility</td><td>Barns, arenas, and support buildings completed and inspected.</td></tr>
+      <tr><td>Mo 5–6</td><td>Operations Launch</td><td>Herd brought on, staff trained, daily systems running independently.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="contact" id="contact">
+  <div class="eyebrow" style="display:flex; justify-content:center;">Get in touch</div>
+  <h2>Ready to build<br>something real?</h2>
+  <p>Whether it's a single barn or a full ranch from raw land, Kat takes the project on as her own.</p>
+  <a class="btn" href="mailto:hello@katshorsepower.com">hello@katshorsepower.com</a>
+</section>
+
+<footer>
+  <div>Kat's Horsepower — Ranch &amp; Equine Consulting</div>
+  <div>© 2026, All Rights Reserved</div>
+</footer>
+
+</body>
 </html>
